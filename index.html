@@ -1047,6 +1047,7 @@ localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.string
  await safeSet(`group:${t.code}`, updatedGroup, true);
  }
  }
+ await deleteSharedKey(`personalRider:${t.code}:${authSession.user.id}`);
  }
  await deleteSharedKey(`profile:${authSession.user.id}`);
  } catch (e) {}
@@ -1074,7 +1075,20 @@ localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.string
 
  const g = await safeGet(`group:${targetCode}`, true);
  const s = await safeGet(`sharedRider:${targetCode}`, true);
- const per = await safeGet(`personalRider:${targetCode}`, false);
+ let per = null;
+ if (authSession?.user?.id) {
+ per = await safeGet(`personalRider:${targetCode}:${authSession.user.id}`, true);
+ if (!per) {
+ // one-time migration: personal items used to live only in this browser's
+ // local storage, which is why they could vanish if the browser cleared it.
+ // If anything's still sitting there, pull it up into the cloud now.
+ const legacy = await safeGet(`personalRider:${targetCode}`, false);
+ if (legacy && legacy.items && legacy.items.length > 0) {
+ per = legacy;
+ await safeSet(`personalRider:${targetCode}:${authSession.user.id}`, legacy, true);
+ }
+ }
+ }
  
 if (g) {
  setGroup(g);
@@ -1099,7 +1113,7 @@ if (g) {
  else if (!isPoll) setPersonal({ items: [] });
  }
  return g;
- }, [profile]);
+ }, [profile, authSession]);
 
  useEffect(() => {
  if (screen === "trip" && group) {
@@ -1571,7 +1585,7 @@ let newStatus = status;
  const next = { items: [...personal.items, item] };
  setPersonal(next);
  recentWrites.current.personal = Date.now();
- await persist(`personalRider:${group.code}`, next, false);
+ await persist(`personalRider:${group.code}:${authSession.user.id}`, next, true);
  resetForm();
  }
 
@@ -1580,7 +1594,7 @@ let newStatus = status;
  setPersonal(next);
  setSelectedPersonalIds(prev => prev.filter(x => x !== id));
  recentWrites.current.personal = Date.now();
- await persist(`personalRider:${group.code}`, next, false);
+ await persist(`personalRider:${group.code}:${authSession.user.id}`, next, true);
  }
 
  async function submitEditPersonal() {
@@ -1595,7 +1609,7 @@ let newStatus = status;
  };
  setPersonal(next);
  recentWrites.current.personal = Date.now();
- await persist(`personalRider:${group.code}`, next, false);
+ await persist(`personalRider:${group.code}:${authSession.user.id}`, next, true);
  resetForm();
  }
 
