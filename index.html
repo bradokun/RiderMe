@@ -1,0 +1,2934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
+ <title>RiderMe</title>
+ <!-- Tailwind CSS -->
+ <script src="https://cdn.tailwindcss.com"></script>
+ <!-- React & ReactDOM (production builds) -->
+ <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+ <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+ <!-- Babel Standalone for browser JSX compilation -->
+ <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+ <!-- Supabase JS Client for Secure Cloud Sync -->
+ <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+ <!-- Leaflet CSS & JS for Interactive Map View -->
+ <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+ <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+<body class="bg-[#0B0A10] text-[#17151D] font-body selection:bg-[#FF3D6E] selection:text-white">
+ <div id="root"></div>
+
+ <script type="text/babel">
+ const { useState, useEffect, useCallback, useRef } = React;
+
+ // ---------- ADMINISTRATOR CLOUD CONFIGURATION ----------
+ const SUPABASE_URL = "https://qajimmgjxgnvcidinimg.supabase.co";
+ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhamltbWdqeGdudmNpZGluaW1nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4NzA4MzksImV4cCI6MjEwMTQ0NjgzOX0.uoMV5ZTzk_wxzLUA6IYbvDllroSK3rj9sG85VlxNKk4";
+
+ let supabaseInstance = null;
+
+ function getSupabaseClient() {
+ if (supabaseInstance) return supabaseInstance;
+
+ if (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase && SUPABASE_URL !== "YOUR_SUPABASE_URL") {
+ try {
+ supabaseInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+ return supabaseInstance;
+ } catch (e) {
+ return null;
+ }
+ }
+ return null;
+ }
+
+ async function safeGet(key, shared) {
+ const storageKey = (shared ? "shared_" : "local_") + key;
+ const supabase = getSupabaseClient();
+ 
+ if (supabase && shared) {
+ try {
+ const { data, error } = await supabase
+ .from('app_data')
+ .select('value')
+ .eq('key', storageKey)
+ .single();
+ if (data && data.value) {
+ return data.value;
+ }
+ } catch (e) {}
+ }
+
+ const val = localStorage.getItem(storageKey);
+ if (!val) return null;
+ try {
+ return JSON.parse(val);
+ } catch (e) {
+ return { value: val };
+ }
+ }
+
+ async function safeSet(key, value, shared) {
+ const storageKey = (shared ? "shared_" : "local_") + key;
+ const parsedObj = typeof value === 'string' ? JSON.parse(value) : value;
+ 
+localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.stringify(value));
+
+ const supabase = getSupabaseClient();
+ if (supabase && shared) {
+ try {
+ await supabase
+ .from('app_data')
+ .upsert({ key: storageKey, value: parsedObj, updated_at: new Date() });
+ return true;
+ } catch (e) {
+ return false;
+ }
+ }
+ return true;
+ }
+
+ function uid() {
+ return Math.random().toString(36).slice(2, 10);
+ }
+ function getInitials(name) {
+ if (!name) return "?";
+ const parts = name.trim().split(/\s+/).filter(Boolean);
+ if (parts.length === 0) return "?";
+ if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+ return (parts[0][0] + parts[1][0]).toUpperCase();
+ }
+ function makeCode() {
+ const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+ let out = "";
+ for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
+ return out;
+ }
+
+ function formatISODate(d) {
+ const y = d.getFullYear();
+ const m = String(d.getMonth() + 1).padStart(2, '0');
+ const day = String(d.getDate()).padStart(2, '0');
+ return `${y}-${m}-${day}`;
+ }
+
+ function parseISODate(str) {
+ if (!str) return null;
+ const [y, m, d] = str.split('-').map(Number);
+ return new Date(y, m - 1, d);
+ }
+
+ function formatDateLabel(str) {
+ if (!str) return "";
+ const d = parseISODate(str);
+ if (!d) return str;
+ const day = String(d.getDate()).padStart(2, '0');
+ const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+ const mon = months[d.getMonth()];
+ const yy = String(d.getFullYear()).slice(-2);
+ return `${day}-${mon}-${yy}`;
+ }
+
+ function formatValidityPeriod(startDate, endDate) {
+ if (!startDate && !endDate) return "";
+ const start = parseISODate(startDate);
+ const end = parseISODate(endDate);
+ const mon = (d) => d.toLocaleDateString(undefined, { month: 'short' });
+ if (start && !end) return `From ${mon(start)} ${start.getDate()}, ${start.getFullYear()}`;
+ if (!start && end) return `Until ${mon(end)} ${end.getDate()}, ${end.getFullYear()}`;
+ if (startDate === endDate) return `${mon(start)} ${start.getDate()}, ${start.getFullYear()}`;
+ const sameYear = start.getFullYear() === end.getFullYear();
+ const sameMonth = sameYear && start.getMonth() === end.getMonth();
+ if (sameMonth) return `${mon(start)} ${start.getDate()}–${end.getDate()}, ${end.getFullYear()}`;
+ if (sameYear) return `${mon(start)} ${start.getDate()} – ${mon(end)} ${end.getDate()}, ${end.getFullYear()}`;
+ return `${mon(start)} ${start.getDate()}, ${start.getFullYear()} – ${mon(end)} ${end.getDate()}, ${end.getFullYear()}`;
+ }
+
+ function DateRangePicker({ startDate, endDate, onChange, label }) {
+ const [open, setOpen] = React.useState(false);
+ const [localStart, setLocalStart] = React.useState(startDate || "");
+ const [localEnd, setLocalEnd] = React.useState(endDate || "");
+ const [viewDate, setViewDate] = React.useState(() => parseISODate(startDate) || new Date());
+ const wrapRef = React.useRef(null);
+
+ React.useEffect(() => {
+ if (open) {
+ setLocalStart(startDate || "");
+ setLocalEnd(endDate || "");
+ setViewDate(parseISODate(startDate) || new Date());
+ }
+ }, [open]);
+
+ React.useEffect(() => {
+ function onDocClick(e) {
+ if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+ }
+ document.addEventListener("mousedown", onDocClick);
+ return () => document.removeEventListener("mousedown", onDocClick);
+ }, []);
+
+ function handleDayClick(dateStr) {
+ if (!localStart || (localStart && localEnd)) {
+ setLocalStart(dateStr);
+ setLocalEnd("");
+ } else if (dateStr < localStart) {
+ setLocalStart(dateStr);
+ setLocalEnd("");
+ } else {
+ setLocalEnd(dateStr);
+ onChange(localStart, dateStr);
+ setOpen(false);
+ }
+ }
+
+ function clearRange(e) {
+ e.stopPropagation();
+ setLocalStart("");
+ setLocalEnd("");
+ onChange("", "");
+ }
+
+ const display = startDate || endDate
+ ? formatValidityPeriod(startDate, endDate)
+ : "Select validity period";
+
+ const year = viewDate.getFullYear();
+ const month = viewDate.getMonth();
+ const firstDay = new Date(year, month, 1).getDay();
+ const daysInMonth = new Date(year, month + 1, 0).getDate();
+ const days = [];
+ for (let i = 0; i < firstDay; i++) days.push(null);
+ for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i));
+
+ return (
+ <div className="relative" ref={wrapRef}>
+ <label className="font-mono text-[8px] font-bold text-[#726C78] uppercase block mb-0.5">{label || "Validity Period"}</label>
+ <button
+ type="button"
+ onClick={() => setOpen((o) => !o)}
+ className="cartoon-input w-full font-mono text-[10px] text-left flex items-center justify-between"
+ >
+ <span className={startDate || endDate ? "text-[#17151D] font-bold" : "text-[#9C97A3]"}>{display}</span>
+ {(startDate || endDate) && (
+ <span onClick={clearRange} className="text-[#9C97A3] hover:text-[#E5484D] font-bold px-1">✕</span>
+ )}
+ </button>
+ {open && (
+ <div className="absolute z-50 top-full left-0 mt-1 cartoon-card p-2.5 bg-[#FAF7F2] w-64 shadow-[0_6px_18px_-6px_rgba(0,0,0,0.5)]">
+ <div className="font-mono text-[8px] font-bold text-[#FF3D6E] uppercase tracking-wide mb-1.5 text-center">
+ {!localStart ? "Pick a start date" : !localEnd ? "Now pick an end date" : "Range set"}
+ </div>
+ <div className="flex items-center justify-between mb-1.5">
+ <button type="button" onClick={() => setViewDate(new Date(year, month - 1, 1))} className="cartoon-btn px-1.5 py-0.5 text-[10px] bg-white">‹</button>
+ <div className="font-mono text-[10px] font-extrabold text-[#17151D]">
+ {viewDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+ </div>
+ <button type="button" onClick={() => setViewDate(new Date(year, month + 1, 1))} className="cartoon-btn px-1.5 py-0.5 text-[10px] bg-white">›</button>
+ </div>
+ <div className="grid grid-cols-7 gap-0.5 text-center font-mono text-[7px] font-extrabold text-[#726C78] uppercase mb-1">
+ <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+ </div>
+ <div className="grid grid-cols-7 gap-0.5">
+ {days.map((d, idx) => {
+ if (!d) return <div key={idx} className="h-6" />;
+ const dateStr = formatISODate(d);
+ const isStart = dateStr === localStart;
+ const isEnd = dateStr === localEnd;
+ const inRange = localStart && localEnd && dateStr > localStart && dateStr < localEnd;
+ const isPast = dateStr < formatISODate(new Date()) && dateStr !== localStart;
+ return (
+ <button
+ type="button"
+ key={idx}
+ onClick={() => handleDayClick(dateStr)}
+ className={`h-6 text-[9px] font-mono font-bold rounded transition ${
+ isStart || isEnd ? "bg-[#FF3D6E] text-white" :
+ inRange ? "bg-[#FF3D6E]/20 text-[#17151D]" :
+ "text-[#17151D] hover:bg-black/5"
+ } ${isPast ? "opacity-40" : ""}`}
+ >
+ {d.getDate()}
+ </button>
+ );
+ })}
+ </div>
+ </div>
+ )}
+ </div>
+ );
+ }
+
+ function formatTimeLabel12(str) {
+ if (!str) return "";
+ const [hStr, mStr] = str.split(':');
+ if (!hStr || !mStr) return str;
+ let h = parseInt(hStr, 10);
+ const m = mStr.padStart(2, '0');
+ const ampm = h >= 12 ? 'PM' : 'AM';
+ h = h % 12;
+ if (h === 0) h = 12;
+ return `${h}:${m} ${ampm}`;
+ }
+
+ function formatDateTimeLabel(dateStr, timeStr) {
+ if (!dateStr && !timeStr) return "";
+ const parts = [];
+ if (dateStr) parts.push(formatDateLabel(dateStr));
+ if (timeStr) parts.push(formatTimeLabel12(timeStr));
+ return parts.join(" ");
+ }
+
+ function sortItemsChronologically(items) {
+ return [...items].sort((a, b) => {
+ if (!a.date && !b.date) return 0;
+ if (!a.date) return 1;
+ if (!b.date) return -1;
+ const dateDiff = a.date.localeCompare(b.date);
+ if (dateDiff !== 0) return dateDiff;
+ const timeA = a.time || "";
+ const timeB = b.time || "";
+ if (!timeA && !timeB) return 0;
+ if (!timeA) return 1;
+ if (!timeB) return -1;
+ return timeA.localeCompare(timeB);
+ });
+ }
+
+ function isBoilerplateEuropeCoords(lat, lon) {
+ return (lat > 48 && lat < 53 && lon > 7 && lon < 12);
+ }
+
+ function extractLocationData(locationStr) {
+ if (!locationStr) return null;
+ const str = locationStr.trim();
+ const atMatch = str.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+ if (atMatch) {
+ const lat = parseFloat(atMatch[1]);
+ const lon = parseFloat(atMatch[2]);
+ if (!isBoilerplateEuropeCoords(lat, lon)) return { lat, lon };
+ }
+ const d3d4 = str.match(/!3d(-?\d+(?:\.\d+)?).*?!4d(-?\d+(?:\.\d+)?)/);
+ if (d3d4) {
+ const lat = parseFloat(d3d4[1]);
+ const lon = parseFloat(d3d4[2]);
+ if (!isBoilerplateEuropeCoords(lat, lon)) return { lat, lon };
+ }
+ const coordMatch = str.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+ if (coordMatch) {
+ return { lat: parseFloat(coordMatch[1]), lon: parseFloat(coordMatch[2]) };
+ }
+ const qCoordMatch = str.match(/(?:q|query|ll|center)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+ if (qCoordMatch) {
+ const lat = parseFloat(qCoordMatch[1]);
+ const lon = parseFloat(qCoordMatch[2]);
+ if (!isBoilerplateEuropeCoords(lat, lon)) return { lat, lon };
+ }
+ const qTextMatch = str.match(/(?:q|query)=([^&]+)/);
+ if (qTextMatch) {
+ return { query: decodeURIComponent(qTextMatch[1].replace(/\+/g, " ")) };
+ }
+ if (str.includes("/place/")) {
+ const placeMatch = str.match(/\/place\/([^\/@?]+)/);
+ if (placeMatch) return { query: decodeURIComponent(placeMatch[1].replace(/\+/g, " ")) };
+ }
+ if (str.includes("goo.gl") || str.includes("maps.app")) {
+ return { isShortLink: true, raw: str };
+ }
+ return { query: str };
+ }
+
+ async function resolveItemLocation(item, tripName) {
+ const rawLoc = item.location ? item.location.trim() : "";
+ if (!rawLoc) return { ...item, geocodeError: true };
+ let parsed = extractLocationData(rawLoc);
+ if (parsed && parsed.lat && parsed.lon) {
+ return { ...item, lat: parsed.lat, lon: parsed.lon };
+ }
+ if (parsed && (parsed.isShortLink || rawLoc.includes("http"))) {
+ const proxyResolvers = [
+ async (u) => {
+ const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(u)}`);
+ const text = await res.text();
+ return { finalUrl: res.url || "", textContent: text };
+ },
+ async (u) => {
+ const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(u)}`);
+ const data = await res.json();
+ return { finalUrl: data.status?.url || "", textContent: data.contents || "" };
+ }
+ ];
+ for (const resolver of proxyResolvers) {
+ try {
+ const { finalUrl, textContent } = await resolver(rawLoc);
+ let fromUrl = extractLocationData(finalUrl);
+ if (fromUrl && fromUrl.lat && fromUrl.lon) {
+ return { ...item, lat: fromUrl.lat, lon: fromUrl.lon };
+ }
+ const htmlAt = textContent.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+ if (htmlAt) {
+ const lat = parseFloat(htmlAt[1]);
+ const lon = parseFloat(htmlAt[2]);
+ if (!isBoilerplateEuropeCoords(lat, lon)) return { ...item, lat, lon };
+ }
+ } catch (e) {}
+ }
+ }
+ const queriesToTry = [];
+ let baseQuery = (parsed && parsed.query) ? parsed.query : (!rawLoc.startsWith("http") ? rawLoc : item.name);
+ if (baseQuery) queriesToTry.push(baseQuery);
+ if (item.name && !queriesToTry.includes(item.name)) queriesToTry.push(item.name);
+
+ let tripContext = "";
+ if (tripName) {
+ tripContext = tripName.replace(/[0-9]/g, "").replace(/trip|vacation|tour|travel|holiday/gi, "").trim();
+ }
+
+ const enhancedQueries = [];
+ for (const q of queriesToTry) {
+ enhancedQueries.push(q);
+ if (tripContext && !q.toLowerCase().includes(tripContext.toLowerCase())) {
+ enhancedQueries.unshift(`${q}, ${tripContext}`);
+ }
+ }
+
+ for (let q of [...new Set(enhancedQueries)]) {
+ if (!q) continue;
+ try {
+ const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`, {
+ headers: { 'Accept-Language': 'en' }
+ });
+ const data = await res.json();
+ if (data && data.length > 0) {
+ return { ...item, lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+ }
+ } catch (e) {}
+ }
+ return { ...item, geocodeError: true };
+ }
+
+ const CATEGORIES = ["Food", "Drink", "Accommodation", "Activities", "Transport", "Budget", "Other"];
+
+ const CATEGORY_COLORS = {
+ "Food": "#FF6B4A",
+ "Drink": "#2DC7C0",
+ "Accommodation": "#8B7CF6",
+ "Activities": "#F0559B",
+ "Transport": "#4C8DFF",
+ "Budget": "#2FBF82",
+ "Other": "#8A8593",
+ };
+
+ const PRIORITIES = ["Big Deal", "Small Deal", "Whatever"];
+
+ const PRIORITY_STYLES = {
+ "Big Deal": { bg: "bg-[#1FD65E]", text: "text-[#062E14]", letter: "B", label: "Big Deal", hex: "#1FD65E" },
+ "Small Deal": { bg: "bg-[#00B8F0]", text: "text-white", letter: "S", label: "Small Deal", hex: "#00B8F0" },
+ "Whatever": { bg: "bg-[#F075E0]", text: "text-[#4A0A42]", letter: "W", label: "Whatever", hex: "#F075E0" }
+ };
+
+ const FONT_STYLES = `
+ @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+ .font-display { font-family: 'Bebas Neue', 'Inter', sans-serif; letter-spacing: 0.02em; font-weight: 400; }
+ .font-body { font-family: 'Inter', sans-serif; }
+ .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+ body { background: #0B0A10; }
+
+.cartoon-card {
+ background: #FAF7F2;
+ border: 1px solid rgba(23,21,29,0.10);
+ box-shadow: 0 1px 2px rgba(0,0,0,0.28), 0 10px 26px -12px rgba(0,0,0,0.5);
+ border-radius: 16px;
+ }
+ .cartoon-card-sm {
+ background: #F4F0E9;
+ border: 1px solid rgba(23,21,29,0.09);
+ box-shadow: 0 1px 2px rgba(0,0,0,0.22), 0 6px 16px -8px rgba(0,0,0,0.4);
+ border-radius: 12px;
+ }
+ .cartoon-btn {
+ border: 1px solid rgba(23,21,29,0.14);
+ box-shadow: 0 2px 6px -1px rgba(0,0,0,0.35);
+ border-radius: 10px;
+ font-weight: 700;
+ transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+ }
+ .cartoon-btn:hover {
+ transform: translateY(-1.5px);
+ box-shadow: 0 6px 16px -2px rgba(0,0,0,0.45);
+ }
+ .cartoon-btn:active {
+ transform: translateY(0px);
+ box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+ }
+ .cartoon-input {
+ background: #FFFEFC;
+ border: 1px solid rgba(23,21,29,0.16);
+ box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+ border-radius: 10px;
+ padding: 7px 11px;
+ font-weight: 600;
+ outline: none;
+ transition: border-color 0.15s ease, box-shadow 0.15s ease;
+ }
+ .cartoon-input:focus {
+ background: #FFFFFF;
+ border-color: #FF3D6E;
+ box-shadow: 0 0 0 3px rgba(255,61,110,0.28);
+ }
+
+ /* signature: backstage laminate pass */
+ .rm-pass {
+ position: relative;
+ background: linear-gradient(155deg, #1D1B24, #121019);
+ border: 1px solid rgba(255,255,255,0.10);
+ border-radius: 14px;
+ box-shadow: 0 1px 2px rgba(0,0,0,0.5), 0 12px 28px -12px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.06);
+ }
+ .rm-pass::before {
+ content: '';
+ position: absolute;
+ top: -6px;
+ left: 50%;
+ transform: translateX(-50%);
+ width: 12px;
+ height: 12px;
+ border-radius: 50%;
+ background: radial-gradient(circle at 35% 35%, rgba(0,0,0,0.55), rgba(0,0,0,0.9) 70%);
+ box-shadow: inset 0 1px 2px rgba(0,0,0,0.6), 0 1px 0 rgba(255,255,255,0.14);
+ }
+ .rm-glow {
+ position: absolute;
+ pointer-events: none;
+ background: radial-gradient(circle, rgba(255,61,110,0.20) 0%, rgba(124,92,252,0.10) 45%, transparent 72%);
+ filter: blur(2px);
+ }
+ .rm-bolt {
+ animation: rm-flicker 2.6s ease-in-out infinite;
+ filter: drop-shadow(0 0 4px rgba(255,61,110,0.8));
+ }
+ .rm-bolt-2 {
+ animation-delay: 1.1s;
+ }
+ @keyframes rm-flicker {
+ 0%, 100% { opacity: 1; }
+ 4% { opacity: 0.3; }
+ 8% { opacity: 1; }
+ 12% { opacity: 0.4; }
+ 16% { opacity: 1; }
+ 60% { opacity: 1; }
+ 64% { opacity: 0.5; }
+ 68% { opacity: 1; }
+ }
+ `;
+
+ function MapView({ sharedItems, personalItems, categoryColors, onEditItem, tripName }) {
+ const mapContainerRef = useRef(null);
+ const mapInstanceRef = useRef(null);
+ const markersLayerRef = useRef(null);
+ const prevItemSignatureRef = useRef("");
+
+ const [geocodedItems, setGeocodedItems] = useState([]);
+ const [geocoding, setGeocoding] = useState(false);
+
+ const locatedItems = [
+ ...(sharedItems || []).map(i => ({ ...i, source: 'shared' })),
+ ...(personalItems || []).map(i => ({ ...i, source: 'personal' }))
+ ].filter(i => !!i.location && i.location.trim() !== "");
+
+ useEffect(() => {
+ let cancelled = false;
+ async function processLocations() {
+ if (locatedItems.length === 0) {
+ setGeocodedItems([]);
+ return;
+ }
+ setGeocoding(true);
+ const results = [];
+ for (const item of locatedItems) {
+ if (cancelled) break;
+ const resolved = await resolveItemLocation(item, tripName);
+ results.push(resolved);
+ }
+ if (!cancelled) {
+ setGeocodedItems(results);
+ setGeocoding(false);
+ }
+ }
+ processLocations();
+ return () => { cancelled = true; };
+ }, [JSON.stringify(locatedItems.map(i => ({ id: i.id, loc: i.location, name: i.name }))), tripName]);
+
+ useEffect(() => {
+ if (!mapContainerRef.current || typeof L === 'undefined') return;
+
+ if (!mapInstanceRef.current) {
+ const map = L.map(mapContainerRef.current).setView([20, 0], 2);
+ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+ maxZoom: 19,
+ attribution: '&copy; OpenStreetMap'
+ }).addTo(map);
+
+ const markersLayer = L.featureGroup().addTo(map);
+
+ map.on('popupopen', (e) => {
+ const popupNode = e.popup.getElement();
+ const editBtn = popupNode ? popupNode.querySelector('.popup-edit-btn') : null;
+ if (editBtn) {
+ editBtn.onclick = () => {
+ const itemId = editBtn.getAttribute('data-id');
+ const found = locatedItems.find(i => i.id === itemId);
+ if (found && onEditItem) onEditItem(found);
+ };
+ }
+ });
+
+ mapInstanceRef.current = map;
+ markersLayerRef.current = markersLayer;
+ }
+
+ return () => {
+ if (mapInstanceRef.current) {
+ mapInstanceRef.current.remove();
+ mapInstanceRef.current = null;
+ markersLayerRef.current = null;
+ }
+ };
+ }, []);
+
+ useEffect(() => {
+ const map = mapInstanceRef.current;
+ const markersLayer = markersLayerRef.current;
+ if (!map || !markersLayer) return;
+
+ markersLayer.clearLayers();
+ const validCoords = geocodedItems.filter(i => i.lat && i.lon);
+
+ validCoords.forEach(item => {
+ const color = categoryColors[item.category] || "#726C78";
+ const customPinIcon = L.divIcon({
+ className: 'custom-pin',
+ html: `
+ <div style="
+ background-color: ${color};
+ width: 28px;
+ height: 28px;
+ border-radius: 50% 50% 50% 0;
+ transform: rotate(-45deg);
+ border: 2px solid #17151D;
+ box-shadow: 2px 2px 0px #17151D;
+ display: flex;
+ align-items: center;
+ justify-content: center;
+ ">
+ <div style="
+ width: 6px;
+ height: 6px;
+ background: white;
+ border-radius: 50%;
+ transform: rotate(45deg);
+ "></div>
+ </div>
+ `,
+ iconSize: [28, 28],
+ iconAnchor: [14, 28],
+ popupAnchor: [0, -28]
+ });
+
+ const marker = L.marker([item.lat, item.lon], { icon: customPinIcon });
+ const dateLabel = formatDateTimeLabel(item.date, item.time);
+ const gmapsUrl = item.location.startsWith('http')
+ ? item.location
+ : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location)}`;
+
+ const popupHtml = `
+ <div style="font-family: Inter, sans-serif; color: #17151D; min-width: 160px; padding: 2px;">
+ <div style="font-size: 13px; font-weight: 800; margin-bottom: 2px;">${item.name}</div>
+ <div style="font-size: 9px; color: ${color}; font-weight: 800; text-transform: uppercase; font-family: monospace;">
+ ${item.category} (${item.source})
+ </div>
+ ${dateLabel ? `<div style="font-size: 10px; color: #FF3D6E; margin-top: 3px; font-weight: 700;">Valid: ${dateLabel}</div>` : ''}
+ <div style="margin-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 6px; border-top: 1px solid #17151D; padding-top: 5px;">
+ <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" style="font-size: 9px; color: #2DC7C0; font-weight: 800; text-decoration: none; background: #E6FBF9; padding: 2px 5px; border-radius: 4px; border: 1px solid #17151D;">
+ Maps ↗
+ </a>
+ <button data-id="${item.id}" class="popup-edit-btn" style="font-size: 9px; color: #17151D; background: #F0EAFF; padding: 2px 5px; border-radius: 4px; border: 1px solid #17151D; font-weight: 800; cursor: pointer;">
+ Edit
+ </button>
+ </div>
+ </div>
+ `;
+ marker.bindPopup(popupHtml);
+ markersLayer.addLayer(marker);
+ });
+
+ const currentItemSignature = validCoords.map(i => `${i.id}_${i.lat}_${i.lon}`).join('|');
+ if (currentItemSignature !== prevItemSignatureRef.current && validCoords.length > 0) {
+ prevItemSignatureRef.current = currentItemSignature;
+ if (validCoords.length === 1) {
+ map.setView([validCoords[0].lat, validCoords[0].lon], 13);
+ } else {
+ map.fitBounds(markersLayer.getBounds().pad(0.2));
+ }
+ }
+ setTimeout(() => map.invalidateSize(), 100);
+ }, [geocodedItems]);
+
+ const centerMapPins = () => {
+ const map = mapInstanceRef.current;
+ const markersLayer = markersLayerRef.current;
+ if (!map || !markersLayer) return;
+ const validCoords = geocodedItems.filter(i => i.lat && i.lon);
+ if (validCoords.length === 1) {
+ map.setView([validCoords[0].lat, validCoords[0].lon], 13);
+ } else if (validCoords.length > 1) {
+ map.fitBounds(markersLayer.getBounds().pad(0.2));
+ }
+ };
+
+ const validCount = geocodedItems.filter(i => i.lat && i.lon).length;
+
+ return (
+ <div className="space-y-3">
+ <div className="cartoon-card p-3">
+ <div className="flex items-center justify-between mb-2">
+ <div>
+ <div className="font-display text-sm uppercase text-[#17151D]">Map View</div>
+ <div className="font-mono text-[9px] font-semibold text-[#726C78]">
+ {validCount} active pin(s) plotted
+ </div>
+ </div>
+ <div className="flex items-center gap-2">
+ {geocoding && <div className="font-mono text-[9px] text-[#FF3D6E] font-bold animate-pulse">Locating…</div>}
+ {validCount > 0 && (
+ <button onClick={centerMapPins} className="cartoon-btn bg-[#F0EAFF] text-[#17151D] px-2 py-0.5 text-[9px] font-mono uppercase">
+ Center
+ </button>
+ )}
+ </div>
+ </div>
+
+ {locatedItems.length === 0 ? (
+ <div className="text-center py-6 border border-dashed border-[#17151D]/30 rounded-lg bg-white/50">
+ <div className="font-mono text-[10px] text-[#726C78] font-semibold">No locations added yet!</div>
+ </div>
+ ) : (
+ <div ref={mapContainerRef} className="w-full h-64 rounded-lg border border-[#17151D]/12 shadow-[0_3px_10px_-2px_rgba(0,0,0,0.4)] z-0" />
+ )}
+ </div>
+
+ {locatedItems.length > 0 && (
+ <div className="cartoon-card p-3">
+ <div className="font-mono text-[9px] font-extrabold uppercase tracking-widest text-[#726C78] mb-2">
+ Locations Directory ({locatedItems.length})
+ </div>
+ <div className="space-y-1.5">
+ {locatedItems.map((item) => {
+ const gmapsUrl = item.location.startsWith('http')
+ ? item.location
+ : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location)}`;
+
+ return (
+ <div key={item.id} className="cartoon-card-sm p-2 flex items-center justify-between gap-2 bg-white text-[11px]">
+ <div className="min-w-0 flex-1 flex items-center gap-1.5 flex-wrap">
+ <span className="font-extrabold font-display text-xs text-[#17151D]">{item.name}</span>
+ <span className="font-mono text-[8px] uppercase font-bold px-1 py-0.2 rounded text-white border border-[#17151D]/18" style={{ backgroundColor: categoryColors[item.category] || "#726C78" }}>
+ {item.category}
+ </span>
+ {(item.date || item.time) && (
+ <span className="font-mono text-[9px] text-[#FF3D6E] font-bold">
+ {formatDateTimeLabel(item.date, item.time)}
+ </span>
+ )}
+ <span className="font-mono text-[9px] text-[#2DC7C0] font-semibold truncate max-w-[130px]">
+ {item.location}
+ </span>
+ </div>
+
+ <div className="flex items-center gap-1 shrink-0">
+ <a href={gmapsUrl} target="_blank" rel="noopener noreferrer" className="cartoon-btn bg-[#2DC7C0] text-white px-2 py-0.5 text-[9px] font-mono">
+ Maps ↗
+ </a>
+ <button onClick={() => onEditItem(item)} className="cartoon-btn bg-[#F0EAFF] text-[#17151D] px-2 py-0.5 text-[9px] font-mono">
+ Edit
+ </button>
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ </div>
+ )}
+ </div>
+ );
+ }
+
+ function App() {
+ const [loading, setLoading] = useState(true);
+ const [authSession, setAuthSession] = useState(undefined); // undefined=checking, null=logged out, object=logged in
+ const [authView, setAuthView] = useState("login"); // login | signup | forgot
+ const [authEmail, setAuthEmail] = useState("");
+ const [authPassword, setAuthPassword] = useState("");
+ const [authPasswordConfirm, setAuthPasswordConfirm] = useState("");
+ const [authError, setAuthError] = useState("");
+ const [authMessage, setAuthMessage] = useState("");
+ const [authLoading, setAuthLoading] = useState(false);
+
+ const [pwCurrent, setPwCurrent] = useState("");
+ const [pwNew, setPwNew] = useState("");
+ const [pwNewConfirm, setPwNewConfirm] = useState("");
+ const [pwError, setPwError] = useState("");
+ const [pwSuccess, setPwSuccess] = useState("");
+ const [pwLoading, setPwLoading] = useState(false);
+
+ const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+ const [deleteConfirmText, setDeleteConfirmText] = useState("");
+ const [deletePassword, setDeletePassword] = useState("");
+ const [deleteError, setDeleteError] = useState("");
+ const [deleteLoading, setDeleteLoading] = useState(false);
+
+ const [cloudStatus, setCloudStatus] = useState("checking"); // checking | connected | local-only
+ const [cloudStatusDetail, setCloudStatusDetail] = useState("");
+ const [showCloudDetail, setShowCloudDetail] = useState(false);
+ const [profile, setProfile] = useState(null);
+ const [screen, setScreen] = useState("landing");
+ const [joinCodeInput, setJoinCodeInput] = useState("");
+ const [tripNameInput, setTripNameInput] = useState("");
+ const [tripStartDate, setTripStartDate] = useState("");
+ const [tripEndDate, setTripEndDate] = useState("");
+ const [error, setError] = useState("");
+
+ const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
+ const [profileNameInput, setProfileNameInput] = useState("");
+ const [nameSetupError, setNameSetupError] = useState("");
+
+ const [showRenameTrip, setShowRenameTrip] = useState(false);
+ const [renameTripInput, setRenameTripInput] = useState("");
+ const [renameStartDate, setRenameStartDate] = useState("");
+ const [renameEndDate, setRenameEndDate] = useState("");
+ const [showShareModal, setShowShareModal] = useState(false);
+ const [shareCopiedStatus, setShareCopiedStatus] = useState(false);
+
+ const [group, setGroup] = useState(null);
+ const [currentRole, setCurrentRole] = useState("owner");
+ const [shared, setShared] = useState({ items: [], proposals: [], activity: [], accommodations: {} });
+ const [personal, setPersonal] = useState({ items: [] });
+ const [tab, setTab] = useState("shared");
+ const [sharedFilter, setSharedFilter] = useState("All");
+ const [mineFilter, setMineFilter] = useState("All");
+
+ const [sharedViewMode, setSharedViewMode] = useState("tile");
+ const [mineViewMode, setMineViewMode] = useState("tile");
+
+ const [selectedPersonalIds, setSelectedPersonalIds] = useState([]);
+ const [calendarMode, setCalendarMode] = useState("month");
+ const [calDate, setCalDate] = useState(new Date());
+
+ const [showAddShared, setShowAddShared] = useState(false);
+ const [showAddPersonal, setShowAddPersonal] = useState(false);
+ const [editSharedItem, setEditSharedItem] = useState(null);
+ const [editPersonalItem, setEditPersonalItem] = useState(null);
+ const [formName, setFormName] = useState("");
+ const [formCategory, setFormCategory] = useState(CATEGORIES[0]);
+ const [formPriority, setFormPriority] = useState(PRIORITIES[0]);
+ const [formNotes, setFormNotes] = useState("");
+ const [formDate, setFormDate] = useState("");
+ const [formTime, setFormTime] = useState("");
+ const [formLocation, setFormLocation] = useState("");
+ const [nameError, setNameError] = useState(false);
+
+ const pollRef = useRef(null);
+
+ // Best-practice mobile fix: when a text field is focused (keyboard opens),
+ // ensure it's actually scrolled into view instead of being hidden behind the keyboard.
+ useEffect(() => {
+ function handleFocusIn(e) {
+ const tag = e.target.tagName;
+ if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+ setTimeout(() => {
+ e.target.scrollIntoView({ behavior: "smooth", block: "center" });
+ }, 300);
+ }
+ }
+ document.addEventListener("focusin", handleFocusIn);
+ return () => document.removeEventListener("focusin", handleFocusIn);
+ }, []);
+ const recentWrites = useRef({ shared: 0, personal: 0 });
+ const WRITE_COOLDOWN_MS = 3000;
+
+ // 1. Establish auth session and listen for changes (login/logout/token refresh)
+ useEffect(() => {
+ const supabase = getSupabaseClient();
+ if (!supabase) {
+ setAuthSession(null);
+ setLoading(false);
+ setCloudStatus("local-only");
+ setCloudStatusDetail("Supabase client failed to initialize.");
+ return;
+ }
+ supabase.auth.getSession().then(({ data }) => {
+ setAuthSession(data?.session || null);
+ });
+ const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+ // TOKEN_REFRESHED fires periodically in the background purely to rotate the
+ // access token — the user and their data haven't changed, so skip re-rendering
+ // for it entirely rather than flashing the loading screen mid-session.
+ if (event === "TOKEN_REFRESHED") return;
+ setAuthSession(session || null);
+ });
+
+ (async () => {
+ try {
+ const probeKey = "shared___connectivity_probe__";
+ const { error: writeErr } = await supabase
+ .from('app_data')
+ .upsert({ key: probeKey, value: { ok: true, ts: Date.now() }, updated_at: new Date() });
+ if (writeErr) throw writeErr;
+ const { error: readErr } = await supabase
+ .from('app_data')
+ .select('key')
+ .eq('key', probeKey)
+ .single();
+ if (readErr) throw readErr;
+ setCloudStatus("connected");
+ } catch (e) {
+ setCloudStatus("local-only");
+ setCloudStatusDetail(e?.message || "Unknown error reaching Supabase.");
+ }
+ })();
+
+ return () => { listener?.subscription?.unsubscribe(); };
+ }, []);
+
+ // 2. Once we know the auth state, load (or create) the profile tied to that account
+ const lastLoadedUserId = useRef(null);
+ useEffect(() => {
+ if (authSession === undefined) return; // still checking
+ if (!authSession) { setProfile(null); setLoading(false); lastLoadedUserId.current = null; return; }
+ if (lastLoadedUserId.current === authSession.user.id) return; // same user already loaded — don't re-flash the loading screen
+ lastLoadedUserId.current = authSession.user.id;
+ (async () => {
+ setLoading(true);
+ const uidKey = authSession.user.id;
+ let p = await safeGet(`profile:${uidKey}`, true);
+ if (p) {
+ if (!p.trips) p.trips = p.lastCode ? [{ code: p.lastCode, name: "Previous Rider", role: "owner" }] : [];
+ p.userId = uidKey;
+ setProfile(p);
+ setProfileNameInput(p.name || "");
+ } else {
+ const defaultProfile = { userId: uidKey, name: "", trips: [], lastCode: null };
+ await safeSet(`profile:${uidKey}`, defaultProfile, true);
+ setProfile(defaultProfile);
+ setProfileNameInput("");
+ }
+ setLoading(false);
+ })();
+ }, [authSession]);
+
+ const saveProfile = useCallback(async (next) => {
+ setProfile(next);
+ if (authSession?.user?.id) {
+ await safeSet(`profile:${authSession.user.id}`, next, true);
+ }
+ }, [authSession]);
+
+ async function deleteSharedKey(key) {
+ const supabase = getSupabaseClient();
+ const storageKey = "shared_" + key;
+ localStorage.removeItem(storageKey);
+ if (supabase) {
+ try { await supabase.from('app_data').delete().eq('key', storageKey); } catch (e) {}
+ }
+ }
+
+ async function handleAuthSignUp() {
+ setAuthError(""); setAuthMessage("");
+ const email = authEmail.trim();
+ if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setAuthError("Enter a valid email address."); return; }
+ if (authPassword.length < 8) { setAuthError("Password must be at least 8 characters."); return; }
+ if (authPassword !== authPasswordConfirm) { setAuthError("Passwords don't match."); return; }
+ const supabase = getSupabaseClient();
+ if (!supabase) { setAuthError("Cloud service unavailable — check your connection."); return; }
+ setAuthLoading(true);
+ const { data, error } = await supabase.auth.signUp({ email, password: authPassword });
+ setAuthLoading(false);
+ if (error) { setAuthError(error.message); return; }
+ if (!data?.session) {
+ setAuthMessage("Check your email to confirm your account, then log in.");
+ setAuthView("login");
+ setAuthPassword(""); setAuthPasswordConfirm("");
+ }
+ }
+
+ async function handleAuthLogin() {
+ setAuthError(""); setAuthMessage("");
+ const email = authEmail.trim();
+ if (!email || !authPassword) { setAuthError("Enter your email and password."); return; }
+ const supabase = getSupabaseClient();
+ if (!supabase) { setAuthError("Cloud service unavailable — check your connection."); return; }
+ setAuthLoading(true);
+ const { error } = await supabase.auth.signInWithPassword({ email, password: authPassword });
+ setAuthLoading(false);
+ if (error) { setAuthError(error.message); return; }
+ setAuthPassword("");
+ }
+
+ async function handleAuthForgotPassword() {
+ setAuthError(""); setAuthMessage("");
+ const email = authEmail.trim();
+ if (!email) { setAuthError("Enter your email address first."); return; }
+ const supabase = getSupabaseClient();
+ if (!supabase) { setAuthError("Cloud service unavailable — check your connection."); return; }
+ setAuthLoading(true);
+ const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.href });
+ setAuthLoading(false);
+ if (error) { setAuthError(error.message); return; }
+ setAuthMessage("Password reset email sent — check your inbox.");
+ }
+
+ async function handleSignOut() {
+ const supabase = getSupabaseClient();
+ if (supabase) await supabase.auth.signOut();
+ setProfile(null);
+ setScreen("landing");
+ setShowHamburgerMenu(false);
+ }
+
+ async function handleChangePassword() {
+ setPwError(""); setPwSuccess("");
+ if (!pwCurrent) { setPwError("Enter your current password."); return; }
+ if (pwNew.length < 8) { setPwError("New password must be at least 8 characters."); return; }
+ if (pwNew !== pwNewConfirm) { setPwError("New passwords don't match."); return; }
+ const supabase = getSupabaseClient();
+ if (!supabase) { setPwError("Cloud service unavailable."); return; }
+ setPwLoading(true);
+ const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: authSession.user.email, password: pwCurrent });
+ if (verifyErr) { setPwLoading(false); setPwError("Current password is incorrect."); return; }
+ const { error } = await supabase.auth.updateUser({ password: pwNew });
+ setPwLoading(false);
+ if (error) { setPwError(error.message); return; }
+ setPwSuccess("Password updated.");
+ setPwCurrent(""); setPwNew(""); setPwNewConfirm("");
+ }
+
+ async function handleDeleteAccount() {
+ setDeleteError("");
+ if (deleteConfirmText.trim().toUpperCase() !== "DELETE") { setDeleteError('Type "DELETE" to confirm.'); return; }
+ if (!deletePassword) { setDeleteError("Enter your password to confirm."); return; }
+ const supabase = getSupabaseClient();
+ if (!supabase) { setDeleteError("Cloud service unavailable."); return; }
+ setDeleteLoading(true);
+ const { error: verifyErr } = await supabase.auth.signInWithPassword({ email: authSession.user.email, password: deletePassword });
+ if (verifyErr) { setDeleteLoading(false); setDeleteError("Incorrect password."); return; }
+
+ try {
+ for (const t of (profile?.trips || [])) {
+ const g = await safeGet(`group:${t.code}`, true);
+ if (g) {
+ const stillHasOthers = (g.members || []).some((m) => m.id !== authSession.user.id);
+ if (!stillHasOthers) {
+ await deleteSharedKey(`group:${t.code}`);
+ await deleteSharedKey(`sharedRider:${t.code}`);
+ } else {
+ const updatedGroup = { ...g, members: g.members.filter((m) => m.id !== authSession.user.id) };
+ await safeSet(`group:${t.code}`, updatedGroup, true);
+ }
+ }
+ }
+ await deleteSharedKey(`profile:${authSession.user.id}`);
+ } catch (e) {}
+
+ try {
+ await supabase.rpc('delete_own_account');
+ } catch (e) {}
+
+ setDeleteLoading(false);
+ await supabase.auth.signOut();
+ setProfile(null);
+ setShowDeleteAccount(false);
+ setShowHamburgerMenu(false);
+ setScreen("landing");
+ }
+
+ const loadTripData = useCallback(async (code, isPoll = false, forceRole = null) => {
+ let targetCode = code;
+ let isViewOnlyCode = false;
+
+ if (code.startsWith("V-")) {
+ targetCode = code.replace("V-", "");
+ isViewOnlyCode = true;
+ }
+
+ const g = await safeGet(`group:${targetCode}`, true);
+ const s = await safeGet(`sharedRider:${targetCode}`, true);
+ const per = await safeGet(`personalRider:${targetCode}`, false);
+ 
+if (g) {
+ setGroup(g);
+ let role = forceRole;
+ if (!role) {
+ const matchedTrip = profile?.trips?.find(t => t.code === targetCode || t.code === `V-${targetCode}`);
+ role = matchedTrip?.role || (isViewOnlyCode ? "received_viewer" : "collaborator");
+ }
+ setCurrentRole(role);
+ }
+
+ const now = Date.now();
+ const sharedIsFresh = isPoll && now - recentWrites.current.shared < WRITE_COOLDOWN_MS;
+ const personalIsFresh = isPoll && now - recentWrites.current.personal < WRITE_COOLDOWN_MS;
+
+ if (!sharedIsFresh) {
+ if (s) setShared(s);
+ else if (!isPoll) setShared({ items: [], proposals: [], activity: [], accommodations: {} });
+ }
+ if (!personalIsFresh) {
+ if (per) setPersonal(per);
+ else if (!isPoll) setPersonal({ items: [] });
+ }
+ return g;
+ }, [profile]);
+
+ useEffect(() => {
+ if (screen === "trip" && group) {
+ pollRef.current = setInterval(() => {
+ loadTripData(group.code, true);
+ }, 3000);
+ return () => clearInterval(pollRef.current);
+ }
+ }, [screen, group?.code, loadTripData]);
+
+ const [saveWarning, setSaveWarning] = useState("");
+
+ async function persist(key, value, shared) {
+ let ok = await safeSet(key, value, shared);
+ if (!ok) {
+ await new Promise((r) => setTimeout(r, 800));
+ ok = await safeSet(key, value, shared);
+ }
+ if (!ok) {
+ setSaveWarning("Couldn't save change — check connection.");
+ setTimeout(() => setSaveWarning(""), 4000);
+ }
+ return ok;
+ }
+
+ async function handleSetInitialName() {
+ const trimmed = profileNameInput.trim();
+ if (!trimmed) { setNameSetupError("Please enter your name to continue."); return; }
+ setNameSetupError("");
+ const updatedProfile = { ...(profile || { userId: authSession?.user?.id, trips: [], lastCode: null }), name: trimmed };
+ await saveProfile(updatedProfile);
+ }
+
+ async function ensureProfile(tripToAdd = null) {
+ let currentName = profile?.name || profileNameInput.trim();
+ let p = profile || { userId: authSession?.user?.id, name: currentName, trips: [], lastCode: null };
+ p = { ...p, name: currentName };
+ let trips = p.trips || [];
+ if (tripToAdd) {
+ trips = [tripToAdd, ...trips.filter(t => t.code !== tripToAdd.code)];
+ }
+ p.trips = trips;
+ if (tripToAdd) p.lastCode = tripToAdd.code;
+ await saveProfile(p);
+ return p;
+ }
+
+ async function handleCreateTrip() {
+ setError("");
+ if (!tripNameInput.trim()) { setError("Give the rider a name."); return; }
+ const code = makeCode();
+ const viewCode = "V-" + code;
+ const tripName = tripNameInput.trim();
+ const startDate = tripStartDate || "";
+ const endDate = tripEndDate || "";
+
+ const p = await ensureProfile({ code, viewCode, name: tripName, startDate, endDate, joinedAt: Date.now(), role: "owner" });
+
+ const newGroup = {
+ code,
+ viewCode,
+ name: tripName,
+ startDate,
+ endDate,
+ createdAt: Date.now(),
+ members: [{ id: p.userId, name: p.name, joinedAt: Date.now(), role: "owner" }],
+ };
+ await persist(`group:${code}`, newGroup, true);
+ await persist(`sharedRider:${code}`, { items: [], proposals: [], activity: [], accommodations: {} }, true);
+ 
+setGroup(newGroup);
+ setCurrentRole("owner");
+ setShared({ items: [], proposals: [], activity: [], accommodations: {} });
+ setPersonal({ items: [] });
+ setScreen("trip");
+ }
+
+ async function handleJoinTrip() {
+ setError("");
+ const rawCode = joinCodeInput.trim().toUpperCase();
+ if (!rawCode) { setError("Enter a rider passcode."); return; }
+ 
+let targetCode = rawCode;
+ let isViewer = false;
+
+ if (rawCode.startsWith("V-")) {
+ targetCode = rawCode.replace("V-", "");
+ isViewer = true;
+ }
+
+ let g = await safeGet(`group:${targetCode}`, true);
+ if (!g && !isViewer) {
+ g = await safeGet(`group:${rawCode}`, true);
+ }
+
+ if (!g) { setError("No rider found with that passcode."); return; }
+
+ if (g.viewCode === rawCode) {
+ isViewer = true;
+ }
+
+ const role = isViewer ? "received_viewer" : "collaborator";
+ const p = await ensureProfile({ code: g.code, viewCode: g.viewCode, name: g.name, startDate: g.startDate, endDate: g.endDate, joinedAt: Date.now(), role });
+ 
+if (!g.members.some((m) => m.id === p.userId)) {
+ g.members.push({ id: p.userId, name: p.name, joinedAt: Date.now(), role });
+ await persist(`group:${g.code}`, g, true);
+ }
+ 
+await loadTripData(g.code, false, role);
+ setScreen("trip");
+ }
+
+ async function handleSwitchTrip(tripObj) {
+ setError("");
+ const code = tripObj.code;
+ const role = tripObj.role || "collaborator";
+ const g = await loadTripData(code, false, role);
+ if (g) {
+ const trips = profile?.trips || [];
+ const updatedTrips = trips.map(t => t.code === code ? { ...t, name: g.name, startDate: g.startDate, endDate: g.endDate, role } : t);
+ await saveProfile({ ...profile, trips: updatedTrips, lastCode: code });
+ setScreen("trip");
+ } else {
+ setError("Could not load rider data.");
+ }
+ }
+
+ async function submitRenameTrip() {
+ if (!renameTripInput.trim() || !group) return;
+ const newName = renameTripInput.trim();
+ const startDate = renameStartDate;
+ const endDate = renameEndDate;
+ const updatedGroup = { ...group, name: newName, startDate, endDate };
+ setGroup(updatedGroup);
+ await persist(`group:${group.code}`, updatedGroup, true);
+
+ if (profile && profile.trips) {
+ const updatedTrips = profile.trips.map(t => t.code === group.code ? { ...t, name: newName, startDate, endDate } : t);
+ await saveProfile({ ...profile, trips: updatedTrips });
+ }
+ setShowRenameTrip(false);
+ setRenameTripInput("");
+ }
+
+ async function syncNameAcrossTrips(newName, userId, trips) {
+ for (const t of trips || []) {
+ try {
+ const g = await safeGet(`group:${t.code}`, true);
+ if (g && Array.isArray(g.members)) {
+ const idx = g.members.findIndex((m) => m.id === userId);
+ if (idx !== -1 && g.members[idx].name !== newName) {
+ const updatedGroup = { ...g, members: g.members.map((m) => (m.id === userId ? { ...m, name: newName } : m)) };
+ await persist(`group:${t.code}`, updatedGroup, true);
+ if (group && group.code === t.code) setGroup(updatedGroup);
+ }
+ }
+ } catch (e) {}
+ }
+ }
+
+ async function closeSettingsMenu() {
+ const trimmed = profileNameInput.trim();
+ if (trimmed && profile && trimmed !== profile.name) {
+ const updatedProfile = { ...profile, name: trimmed };
+ await saveProfile(updatedProfile);
+ await syncNameAcrossTrips(trimmed, updatedProfile.userId, updatedProfile.trips || []);
+ } else {
+ setProfileNameInput(profile?.name || "");
+ }
+ setShowHamburgerMenu(false);
+ }
+
+ function getShareInviteText(type = "collaborate") {
+ if (type === "view_only") {
+ return `Hey! Here is my view-only rider for "${group?.name}". Mark what you can accommodate using passcode: ${group?.viewCode || "V-" + group?.code}`;
+ }
+ return `Hey! Join our shared rider for "${group?.name}" on RiderMe. Passcode: ${group?.code}`;
+ }
+
+ function handleCopyShareInvite(type = "collaborate") {
+ navigator.clipboard.writeText(getShareInviteText(type));
+ setShareCopiedStatus(true);
+ setTimeout(() => setShareCopiedStatus(false), 2000);
+ }
+
+ function leaveTripScreen() {
+ setScreen("landing");
+ setGroup(null);
+ setTab("shared");
+ setSelectedPersonalIds([]);
+ }
+
+ function resetForm() {
+ setFormName("");
+ setFormCategory(CATEGORIES[0]);
+ setFormPriority(PRIORITIES[0]);
+ setFormNotes("");
+ setFormDate("");
+ setFormTime("");
+ setFormLocation("");
+ setNameError(false);
+ setShowAddShared(false);
+ setShowAddPersonal(false);
+ setEditSharedItem(null);
+ setEditPersonalItem(null);
+ }
+
+ function openEditShared(item) {
+ if (currentRole === 'received_viewer') return;
+ setFormName(item.name);
+ setFormCategory(item.category || CATEGORIES[0]);
+ setFormPriority(item.priority || PRIORITIES[0]);
+ setFormNotes(item.notes || "");
+ setFormDate(item.date || "");
+ setFormTime(item.time || "");
+ setFormLocation(item.location || "");
+ setNameError(false);
+ setEditSharedItem(item);
+ }
+
+ function openEditPersonal(item) {
+ setFormName(item.name);
+ setFormCategory(item.category || CATEGORIES[0]);
+ setFormPriority(item.priority || PRIORITIES[0]);
+ setFormNotes(item.notes || "");
+ setFormDate(item.date || "");
+ setFormTime(item.time || "");
+ setFormLocation(item.location || "");
+ setNameError(false);
+ setEditPersonalItem(item);
+ }
+
+ function handleEditFromMap(item) {
+ if (item.source === 'shared') openEditShared(item);
+ else openEditPersonal(item);
+ }
+
+ function copyPasscode() {
+ if (!group?.code) return;
+ navigator.clipboard.writeText(group.code);
+ setCopiedCode(true);
+ setTimeout(() => setCopiedCode(false), 2000);
+ }
+
+ async function submitProposeAdd() {
+ if (!formName.trim()) { setNameError(true); return; }
+ if (!group) return;
+ const proposal = {
+ id: uid(),
+ type: "add",
+ item: { id: uid(), name: formName.trim(), category: formCategory, priority: formPriority, notes: formNotes.trim(), date: formDate, time: formTime, location: formLocation.trim(), optIns: [profile.userId], optOuts: [] },
+ proposedById: profile.userId,
+ proposedByName: profile.name,
+ createdAt: Date.now(),
+ };
+ const next = {
+ ...shared,
+ proposals: [...shared.proposals, proposal],
+ activity: [{ id: uid(), text: `${profile.name} proposed adding "${proposal.item.name}"`, at: Date.now() }, ...shared.activity].slice(0, 20),
+ };
+ setShared(next);
+ recentWrites.current.shared = Date.now();
+ await persist(`sharedRider:${group.code}`, next, true);
+ resetForm();
+ }
+
+ function toggleSelectPersonal(id) {
+ setSelectedPersonalIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+ }
+
+ async function handleAddSelectedToShared() {
+ if (!group || selectedPersonalIds.length === 0) return;
+ const itemsToAdd = personal.items.filter(it => selectedPersonalIds.includes(it.id));
+ if (itemsToAdd.length === 0) return;
+
+ const newProposals = itemsToAdd.map(item => ({
+ id: uid(),
+ type: "add",
+ item: { 
+id: uid(), 
+name: item.name, 
+category: item.category, 
+priority: item.priority || "Big Deal", 
+notes: item.notes, 
+date: item.date, 
+time: item.time, 
+location: item.location, 
+optIns: [profile.userId], 
+optOuts: [] 
+},
+ proposedById: profile.userId,
+ proposedByName: profile.name,
+ createdAt: Date.now(),
+ }));
+
+ const nextShared = {
+ ...shared,
+ proposals: [...shared.proposals, ...newProposals],
+ activity: [{ id: uid(), text: `${profile.name} proposed adding ${itemsToAdd.length} item(s)`, at: Date.now() }, ...shared.activity].slice(0, 20),
+ };
+
+ setShared(nextShared);
+ recentWrites.current.shared = Date.now();
+ await persist(`sharedRider:${group.code}`, nextShared, true);
+ setSelectedPersonalIds([]);
+ setTab("shared");
+ }
+
+ async function proposeRemoval(item) {
+ if (currentRole === 'received_viewer') return;
+ const proposal = {
+ id: uid(),
+ type: "remove",
+ itemId: item.id,
+ itemName: item.name,
+ proposedById: profile.userId,
+ proposedByName: profile.name,
+ createdAt: Date.now(),
+ };
+ const next = {
+ ...shared,
+ proposals: [...shared.proposals, proposal],
+ activity: [{ id: uid(), text: `${profile.name} proposed removing "${item.name}"`, at: Date.now() }, ...shared.activity].slice(0, 20),
+ };
+ setShared(next);
+ recentWrites.current.shared = Date.now();
+ await persist(`sharedRider:${group.code}`, next, true);
+ }
+
+ async function submitDirectEditShared() {
+ if (!formName.trim()) { setNameError(true); return; }
+ if (!group || !editSharedItem) return;
+ const nextItems = shared.items.map((it) =>
+ it.id === editSharedItem.id
+ ? { ...it, name: formName.trim(), category: formCategory, priority: formPriority, notes: formNotes.trim(), date: formDate, time: formTime, location: formLocation.trim(), editedByName: profile.name, editedAt: Date.now() }
+ : it
+ );
+ const next = {
+ ...shared,
+ items: nextItems,
+ activity: [{ id: uid(), text: `${profile.name} edited "${formName.trim()}"`, at: Date.now() }, ...shared.activity].slice(0, 20),
+ };
+ setShared(next);
+ recentWrites.current.shared = Date.now();
+ await persist(`sharedRider:${group.code}`, next, true);
+ resetForm();
+ }
+
+ async function approveProposal(p) {
+ let items = shared.items;
+ let activityText = "";
+ if (p.type === "add") {
+ const newItem = { 
+...p.item, 
+addedByName: p.proposedByName, 
+addedAt: Date.now(),
+ optIns: p.item.optIns || [p.proposedById],
+ optOuts: p.item.optOuts || [] 
+};
+ items = [...items, newItem];
+ activityText = `${profile.name} approved adding "${p.item.name}"`;
+ } else if (p.type === "remove") {
+ items = items.filter((it) => it.id !== p.itemId);
+ activityText = `${profile.name} approved removing "${p.itemName}"`;
+ } else if (p.type === "edit") {
+ items = items.map((it) => (it.id === p.itemId ? { ...it, ...p.after, editedByName: p.proposedByName, editedAt: Date.now() } : it));
+ activityText = `${profile.name} approved editing "${p.after.name}"`;
+ }
+ const next = {
+ items,
+ proposals: shared.proposals.filter((x) => x.id !== p.id),
+ activity: [{ id: uid(), text: activityText, at: Date.now() }, ...shared.activity].slice(0, 20),
+ };
+ setShared(next);
+ recentWrites.current.shared = Date.now();
+ await persist(`sharedRider:${group.code}`, next, true);
+ }
+
+ async function rejectProposal(p) {
+ const label = p.type === "add" ? p.item.name : p.type === "edit" ? p.after.name : p.itemName;
+ const next = {
+ ...shared,
+ proposals: shared.proposals.filter((x) => x.id !== p.id),
+ activity: [{ id: uid(), text: `${profile.name} rejected "${label}"`, at: Date.now() }, ...shared.activity].slice(0, 20),
+ };
+ setShared(next);
+ recentWrites.current.shared = Date.now();
+ await persist(`sharedRider:${group.code}`, next, true);
+ }
+
+ async function cancelOwnProposal(p) {
+ const next = { ...shared, proposals: shared.proposals.filter((x) => x.id !== p.id) };
+ setShared(next);
+ recentWrites.current.shared = Date.now();
+ await persist(`sharedRider:${group.code}`, next, true);
+ }
+
+ async function handleAccommodationToggle(itemId, status) {
+ if (!group) return;
+ const prevAccommodations = shared.accommodations || {};
+ const itemAcc = prevAccommodations[itemId] || {};
+ 
+let newStatus = status;
+ if (itemAcc[profile.userId] === status) {
+ newStatus = null;
+ }
+
+ const nextAccommodations = {
+ ...prevAccommodations,
+ [itemId]: {
+ ...itemAcc,
+ [profile.userId]: newStatus
+ }
+ };
+
+ const next = { ...shared, accommodations: nextAccommodations };
+ setShared(next);
+ recentWrites.current.shared = Date.now();
+ await persist(`sharedRider:${group.code}`, next, true);
+ }
+
+ async function handleOptToggle(itemId, choice) {
+ if (!group) return;
+ const nextItems = shared.items.map((it) => {
+ if (it.id !== itemId) return it;
+ let optIns = it.optIns || [];
+ let optOuts = it.optOuts || [];
+
+ if (choice === 'in') {
+ if (optIns.includes(profile.userId)) {
+ optIns = optIns.filter((id) => id !== profile.userId);
+ } else {
+ optIns = [...optIns.filter((id) => id !== profile.userId), profile.userId];
+ optOuts = optOuts.filter((id) => id !== profile.userId);
+ }
+ } else if (choice === 'out') {
+ if (optOuts.includes(profile.userId)) {
+ optOuts = optOuts.filter((id) => id !== profile.userId);
+ } else {
+ optOuts = [...optOuts.filter((id) => id !== profile.userId), profile.userId];
+ optIns = optIns.filter((id) => id !== profile.userId);
+ }
+ }
+ return { ...it, optIns, optOuts };
+ });
+
+ const next = { ...shared, items: nextItems };
+ setShared(next);
+ recentWrites.current.shared = Date.now();
+ await persist(`sharedRider:${group.code}`, next, true);
+ }
+
+ async function submitAddPersonal() {
+ if (!formName.trim()) { setNameError(true); return; }
+ if (!group) return;
+ const item = { id: uid(), name: formName.trim(), category: formCategory, priority: formPriority, notes: formNotes.trim(), date: formDate, time: formTime, location: formLocation.trim(), addedAt: Date.now() };
+ const next = { items: [...personal.items, item] };
+ setPersonal(next);
+ recentWrites.current.personal = Date.now();
+ await persist(`personalRider:${group.code}`, next, false);
+ resetForm();
+ }
+
+ async function removePersonal(id) {
+ const next = { items: personal.items.filter((it) => it.id !== id) };
+ setPersonal(next);
+ setSelectedPersonalIds(prev => prev.filter(x => x !== id));
+ recentWrites.current.personal = Date.now();
+ await persist(`personalRider:${group.code}`, next, false);
+ }
+
+ async function submitEditPersonal() {
+ if (!formName.trim()) { setNameError(true); return; }
+ if (!group || !editPersonalItem) return;
+ const next = {
+ items: personal.items.map((it) =>
+ it.id === editPersonalItem.id
+ ? { ...it, name: formName.trim(), category: formCategory, priority: formPriority, notes: formNotes.trim(), date: formDate, time: formTime, location: formLocation.trim() }
+ : it
+ ),
+ };
+ setPersonal(next);
+ recentWrites.current.personal = Date.now();
+ await persist(`personalRider:${group.code}`, next, false);
+ resetForm();
+ }
+
+ const byCategory = (list) => {
+ const map = {};
+ for (const it of list) {
+ const c = it.category || "Other";
+ if (!map[c]) map[c] = [];
+ map[c].push(it);
+ }
+ for (const c in map) {
+ map[c] = sortItemsChronologically(map[c]);
+ }
+ return map;
+ };
+
+ function shiftCalendar(amount) {
+ const d = new Date(calDate);
+ if (calendarMode === "month") d.setMonth(d.getMonth() + amount);
+ else if (calendarMode === "week") d.setDate(d.getDate() + (amount * 7));
+ else if (calendarMode === "day") d.setDate(d.getDate() + amount);
+ setCalDate(d);
+ }
+
+ function getAllCalendarItems() {
+ const sItems = (shared.items || []).map(i => ({ ...i, source: 'shared' }));
+ const pItems = (personal.items || []).map(i => ({ ...i, source: 'personal' }));
+ return [...sItems, ...pItems].filter(i => !!i.date);
+ }
+
+ if (loading || authSession === undefined) {
+ return (
+ <div className="min-h-[100dvh] flex items-center justify-center bg-[#0B0A10]">
+ <div className="font-mono text-[#FF3D6E] text-sm font-extrabold animate-pulse">RIDERME…</div>
+ </div>
+ );
+ }
+
+ if (!authSession) {
+ return (
+ <div className="min-h-[100dvh] bg-[#0B0A10] font-body flex items-center justify-center p-3 relative overflow-hidden">
+  <div className="rm-glow w-72 h-72 top-8 left-1/2 -translate-x-1/2"></div>
+ <div className="w-full max-w-xs space-y-3 text-center relative z-10">
+ <h1 className="font-display text-4xl text-white tracking-wide drop-shadow-[0_4px_14px_rgba(255,61,110,0.35)]">RIDERME</h1>
+ <div className="cartoon-card p-4 bg-[#FAF7F2] space-y-2.5 text-left">
+ <div className="flex gap-1.5 mb-1">
+ <button
+ onClick={() => { setAuthView("login"); setAuthError(""); setAuthMessage(""); }}
+ className={`flex-1 py-1.5 rounded-lg font-mono text-[10px] uppercase font-extrabold transition ${authView === "login" ? "bg-[#FF3D6E] text-white" : "bg-black/5 text-[#726C78]"}`}
+ >
+ Log In
+ </button>
+ <button
+ onClick={() => { setAuthView("signup"); setAuthError(""); setAuthMessage(""); }}
+ className={`flex-1 py-1.5 rounded-lg font-mono text-[10px] uppercase font-extrabold transition ${authView === "signup" ? "bg-[#FF3D6E] text-white" : "bg-black/5 text-[#726C78]"}`}
+ >
+ Sign Up
+ </button>
+ </div>
+
+ {authView === "forgot" ? (
+ <div className="space-y-2">
+ <div className="font-display text-sm text-[#17151D]">Reset your password</div>
+ <div className="font-mono text-[9px] text-[#726C78]">We'll email you a link to set a new password.</div>
+ <input
+ autoFocus
+ type="email"
+ className="cartoon-input w-full text-xs"
+ placeholder="you@example.com"
+ value={authEmail}
+ onChange={(e) => setAuthEmail(e.target.value)}
+ onKeyDown={(e) => { if (e.key === "Enter") handleAuthForgotPassword(); }}
+ />
+ {authError && <div className="text-[8px] font-mono text-red-500 font-bold">⚠️ {authError}</div>}
+ {authMessage && <div className="text-[8px] font-mono text-[#2FBF82] font-bold">✓ {authMessage}</div>}
+ <button onClick={handleAuthForgotPassword} disabled={authLoading} className="cartoon-btn w-full bg-[#FF3D6E] text-white py-2 text-xs font-display tracking-wider uppercase disabled:opacity-50">
+ {authLoading ? "Sending…" : "Send Reset Link"}
+ </button>
+ <button onClick={() => { setAuthView("login"); setAuthError(""); setAuthMessage(""); }} className="w-full font-mono text-[9px] font-bold text-[#726C78] hover:text-[#17151D] py-1">
+ Back to Log In
+ </button>
+ </div>
+ ) : (
+ <div className="space-y-2">
+ <div className="font-display text-sm text-[#17151D]">{authView === "login" ? "Welcome back" : "Create your account"}</div>
+ <div className="font-mono text-[9px] text-[#726C78]">
+ {authView === "login" ? "Log in to access your riders from any device." : "One account, synced across every device you use."}
+ </div>
+ <input
+ autoFocus
+ type="email"
+ autoComplete="email"
+ className="cartoon-input w-full text-xs"
+ placeholder="you@example.com"
+ value={authEmail}
+ onChange={(e) => setAuthEmail(e.target.value)}
+ />
+ <input
+ type="password"
+ autoComplete={authView === "login" ? "current-password" : "new-password"}
+ className="cartoon-input w-full text-xs"
+ placeholder={authView === "signup" ? "Password (min. 8 characters)" : "Password"}
+ value={authPassword}
+ onChange={(e) => setAuthPassword(e.target.value)}
+ onKeyDown={(e) => { if (e.key === "Enter" && authView === "login") handleAuthLogin(); }}
+ />
+ {authView === "signup" && (
+ <input
+ type="password"
+ autoComplete="new-password"
+ className="cartoon-input w-full text-xs"
+ placeholder="Confirm password"
+ value={authPasswordConfirm}
+ onChange={(e) => setAuthPasswordConfirm(e.target.value)}
+ onKeyDown={(e) => { if (e.key === "Enter") handleAuthSignUp(); }}
+ />
+ )}
+ {authError && <div className="text-[8px] font-mono text-red-500 font-bold">⚠️ {authError}</div>}
+ {authMessage && <div className="text-[8px] font-mono text-[#2FBF82] font-bold">✓ {authMessage}</div>}
+ <button
+ onClick={authView === "login" ? handleAuthLogin : handleAuthSignUp}
+ disabled={authLoading}
+ className="cartoon-btn w-full bg-[#FF3D6E] text-white py-2 text-xs font-display tracking-wider uppercase disabled:opacity-50"
+ >
+ {authLoading ? "Please wait…" : authView === "login" ? "Log In" : "Create Account"}
+ </button>
+ {authView === "login" && (
+ <button onClick={() => { setAuthView("forgot"); setAuthError(""); setAuthMessage(""); }} className="w-full font-mono text-[9px] font-bold text-[#726C78] hover:text-[#17151D] py-1">
+ Forgot password?
+ </button>
+ )}
+ </div>
+ )}
+ </div>
+ </div>
+ </div>
+ );
+ }
+
+ if (!profile?.name) {
+ return (
+ <div className="min-h-[100dvh] bg-[#0B0A10] font-body flex items-center justify-center p-3">
+  <div className="w-full max-w-xs space-y-3 text-center">
+ <h1 className="font-display text-3xl text-white tracking-wider drop-shadow-[0_4px_14px_rgba(255,61,110,0.35)]">RIDERME</h1>
+ <div className="cartoon-card p-4 bg-[#FAF7F2] space-y-2.5 text-left">
+ <div className="font-display text-sm text-[#17151D]">What should we call you?</div>
+ <div className="font-mono text-[9px] text-[#726C78]">This is the name others will see on shared riders.</div>
+ <input
+ autoFocus
+ className={`cartoon-input w-full text-xs ${nameSetupError ? 'border-red-500 bg-red-500/10' : ''}`}
+ placeholder="Your name"
+ value={profileNameInput}
+ onChange={(e) => { setProfileNameInput(e.target.value); if (e.target.value.trim()) setNameSetupError(""); }}
+ onKeyDown={(e) => { if (e.key === "Enter") handleSetInitialName(); }}
+ />
+ {nameSetupError && <div className="text-[8px] font-mono text-red-500 font-bold">⚠️ {nameSetupError}</div>}
+ <button onClick={handleSetInitialName} className="cartoon-btn w-full bg-[#FF3D6E] text-white py-2 text-xs font-display tracking-wider uppercase">
+ Continue
+ </button>
+ </div>
+ </div>
+ </div>
+ );
+ }
+
+ if (screen === "landing") {
+ const allSavedTrips = profile?.trips || [];
+ const myRiders = allSavedTrips.filter(t => t.role !== "received_viewer");
+ const receivedRiders = allSavedTrips.filter(t => t.role === "received_viewer");
+
+ return (
+ <div className="min-h-[100dvh] bg-[#0B0A10] font-body flex flex-col items-center p-3 relative overflow-x-hidden">
+ 
+ <div className="w-full flex items-center justify-between max-w-sm mx-auto z-10 pt-1">
+ <div className="flex items-center gap-1.5">
+ <div className="font-mono text-[10px] text-white font-bold bg-white/10 backdrop-blur px-2.5 py-1 rounded-full border border-white/20">
+ {profile?.name}
+ </div>
+ <button
+ type="button"
+ title={cloudStatus === "connected" ? "Cloud sync active — shareable across devices" : cloudStatus === "checking" ? "Checking cloud sync…" : "Local only — sharing won't sync yet"}
+ onClick={() => setShowCloudDetail((v) => !v)}
+ className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] border ${
+ cloudStatus === "connected"
+ ? "text-[#2FBF82] border-[#2FBF82]/40 bg-[#2FBF82]/10"
+ : cloudStatus === "checking"
+ ? "text-[#726C78] border-white/10 bg-white/5"
+ : "text-[#F2732D] border-[#F2732D]/40 bg-[#F2732D]/10"
+ }`}
+ >
+ {cloudStatus === "connected" ? "☁" : cloudStatus === "checking" ? "◌" : "⚠"}
+ </button>
+ </div>
+ <button 
+onClick={() => setShowHamburgerMenu(true)} 
+className="cartoon-btn bg-[#FF3D6E] text-white px-3 py-1 text-xs font-mono font-extrabold uppercase flex items-center gap-1 shadow-[0_3px_10px_-2px_rgba(0,0,0,0.4)]"
+ title="Settings & Profile"
+ >
+ <span>Menu</span>
+ </button>
+ </div>
+ {showCloudDetail && (
+ <div className={`w-full max-w-sm mx-auto font-mono text-[8px] font-bold uppercase tracking-wide mt-1 ${cloudStatus === "connected" ? "text-[#2FBF82]" : cloudStatus === "checking" ? "text-[#726C78]" : "text-[#F2732D]"}`}>
+ {cloudStatus === "connected" && "Cloud sync active — shareable across devices"}
+ {cloudStatus === "checking" && "Checking cloud sync…"}
+ {cloudStatus === "local-only" && (cloudStatusDetail ? `Local only: ${cloudStatusDetail}` : "Local only — sharing won't sync yet")}
+ </div>
+ )}
+
+ <div className="w-full max-w-sm space-y-3 pt-3 relative">
+ <div className="rm-glow w-72 h-72 -top-16 left-1/2 -translate-x-1/2 -z-0"></div>
+ <div className="text-center space-y-1.5 relative z-10">
+ <h1 className="font-display text-5xl text-white tracking-wide drop-shadow-[0_4px_14px_rgba(255,61,110,0.35)]">RIDERME</h1>
+ <div className="flex items-center justify-center gap-1">
+ <svg className="rm-bolt w-3 h-3.5 shrink-0" viewBox="0 0 24 24" fill="#FF3D6E"><polygon points="13,1 4,14 11,14 9,23 20,9 13,9" /></svg>
+ <div className="font-mono text-[#2FBF82] text-[9px] font-bold uppercase tracking-widest bg-white/10 py-0.5 px-2.5 rounded-full inline-block border border-[#2FBF82]/30">
+ you don't have to be a rockstar to have a rider
+ </div>
+ <svg className="rm-bolt rm-bolt-2 w-3 h-3.5 shrink-0" viewBox="0 0 24 24" fill="#FF3D6E"><polygon points="13,1 4,14 11,14 9,23 20,9 13,9" /></svg>
+ </div>
+ </div>
+
+ <div className="cartoon-card p-3 space-y-2.5 bg-[#FAF7F2]">
+ <div className="font-mono text-[10px] font-extrabold text-[#17151D] uppercase tracking-wider flex items-center justify-between border-b-2 border-dashed border-[#17151D]/20 pb-2">
+ <span>Your Riders ({myRiders.length})</span>
+ <span className="text-[8px] text-[#726C78] normal-case bg-[#F0EAFF] px-1.5 py-0.5 rounded border border-[#17151D]/18 font-bold">Backstage Passes</span>
+ </div>
+ {myRiders.length === 0 ? (
+ <div className="text-[10px] text-[#726C78] italic text-center py-2">No riders created yet. Start a tour below!</div>
+ ) : (
+ <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+ {myRiders.map((t) => {
+ const validityStr = formatValidityPeriod(t.startDate, t.endDate);
+ return (
+ <div
+ key={t.code}
+ onClick={() => handleSwitchTrip(t)}
+ className="cartoon-card-sm bg-white p-2.5 relative flex items-center justify-between gap-2 hover:bg-[#F3EEFF] transition-all cursor-pointer group overflow-hidden border border-[#17151D]/12 shadow-[0_3px_10px_-2px_rgba(0,0,0,0.4)]"
+ >
+ <div className="absolute left-0 top-0 bottom-0 w-2 bg-gradient-to-b from-[#FF3D6E] to-[#F0559B] border-r border-[#17151D]/18"></div>
+ <div className="pl-3 min-w-0 pr-1 flex-1">
+ <div className="font-display text-xs text-[#17151D] truncate group-hover:text-[#FF3D6E]">
+ {t.name}
+ </div>
+ <div className="flex items-center gap-2 flex-wrap mt-0.5">
+ <span className="font-mono text-[8px] bg-[#17151D] text-white px-1 py-0.2 rounded font-bold uppercase">Pass: {t.code}</span>
+ {validityStr && <span className="font-mono text-[8px] text-[#FF3D6E] font-bold">{validityStr}</span>}
+ </div>
+ </div>
+ <div className="cartoon-btn bg-[#F0EAFF] text-[#17151D] px-2.5 py-1 text-[9px] font-mono font-extrabold uppercase shrink-0 group-hover:bg-[#FF3D6E] group-hover:text-white transition-colors">
+ Open →
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ )}
+ </div>
+
+ <div className="cartoon-card p-3 space-y-2 bg-[#E6FBF9]">
+ <div className="font-mono text-[10px] font-extrabold text-[#1B1730] uppercase tracking-wider flex items-center justify-between">
+ <span>Received Riders ({receivedRiders.length})</span>
+ <span className="text-[8px] text-[#2DC7C0] font-bold uppercase">View & Accommodate</span>
+ </div>
+ {receivedRiders.length === 0 ? (
+ <div className="text-[10px] text-[#726C78] italic text-center py-1">No view-only riders received yet.</div>
+ ) : (
+ <div className="space-y-1 max-h-28 overflow-y-auto pr-1">
+ {receivedRiders.map((t) => {
+ const validityStr = formatValidityPeriod(t.startDate, t.endDate);
+ return (
+ <button
+ key={t.code}
+ onClick={() => handleSwitchTrip(t)}
+ className="w-full text-left bg-white p-2 rounded border border-[#17151D]/18 shadow-[0_1px_4px_rgba(0,0,0,0.3)] flex items-center justify-between hover:bg-[#E6FBF9] transition-all group"
+ >
+ <div className="min-w-0 pr-2">
+ <div className="font-display text-xs text-[#17151D] truncate group-hover:text-[#2DC7C0]">
+ {t.name}
+ </div>
+ <div className="flex items-center gap-2 flex-wrap">
+ <span className="font-mono text-[8px] text-[#2DC7C0] font-bold uppercase">View-Only</span>
+ {validityStr && <span className="font-mono text-[8px] text-[#726C78]">{validityStr}</span>}
+ </div>
+ </div>
+ <span className="cartoon-btn bg-[#2DC7C0] text-white px-2 py-0.5 text-[9px] font-mono shrink-0">Review →</span>
+ </button>
+ );
+ })}
+ </div>
+ )}
+ </div>
+
+ <div className="cartoon-card p-3 space-y-2">
+ <div className="font-display text-sm text-[#17151D]">Create New Rider</div>
+ <div>
+ <label className="font-mono text-[8px] font-bold text-[#726C78] uppercase block mb-0.5">Rider Name</label>
+ <input
+ className="cartoon-input w-full text-xs"
+ placeholder="e.g. Tour 2026"
+ value={tripNameInput}
+ onChange={(e) => setTripNameInput(e.target.value)}
+ />
+ </div>
+ <DateRangePicker
+ startDate={tripStartDate}
+ endDate={tripEndDate}
+ onChange={(s, e) => { setTripStartDate(s); setTripEndDate(e); }}
+ />
+ <button
+ onClick={handleCreateTrip}
+ className="cartoon-btn w-full bg-[#FF3D6E] text-white py-2 text-xs font-display tracking-wider uppercase mt-1"
+ >
+ Create Rider 🚀
+ </button>
+ </div>
+
+ <div className="cartoon-card p-3 space-y-2">
+ <div className="font-display text-sm text-[#17151D]">Join / Receive a Rider</div>
+ <input
+ className="cartoon-input w-full font-mono text-center text-xs uppercase tracking-widest"
+ placeholder="PASSCODE (e.g. ABCDEF)"
+ value={joinCodeInput}
+ onChange={(e) => setJoinCodeInput(e.target.value)}
+ />
+ <button
+ onClick={handleJoinTrip}
+ className="cartoon-btn w-full bg-[#2FBF82] text-white py-2 text-xs font-display tracking-wider uppercase"
+ >
+ Join / View Rider 🎟️
+ </button>
+ </div>
+
+ {error && (
+ <div className="cartoon-card bg-[#FBE2E4] text-[#A61B44] p-2 text-center font-mono text-[9px] font-bold">
+ ⚠️ {error}
+ </div>
+ )}
+ </div>
+
+ {showHamburgerMenu && (
+ <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-50 px-3 pt-10 pb-10 overflow-y-auto" onClick={closeSettingsMenu}>
+ <div className="cartoon-card p-4 w-full max-w-xs bg-[#FAF7F2] space-y-3 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+ <div className="flex items-center justify-between border-b border-[#17151D]/18 pb-2">
+ <div className="font-display text-sm text-[#17151D]">Settings & Profile</div>
+ <button onClick={closeSettingsMenu} className="cartoon-btn bg-white px-2 py-0.5 text-[9px]">✕</button>
+ </div>
+
+ <div className="space-y-1.5">
+ <label className="font-mono text-[9px] font-bold text-[#17151D] uppercase block">Your Display Name</label>
+ <input
+ className="cartoon-input w-full text-xs"
+ value={profileNameInput}
+ onChange={(e) => setProfileNameInput(e.target.value)}
+ placeholder="Your Name"
+ />
+ <div className="font-mono text-[8px] text-[#9C97A3]">Changes save automatically when you close this menu.</div>
+ </div>
+
+ <div className="border-t border-[#17151D]/10 pt-2.5 space-y-1.5">
+ <label className="font-mono text-[9px] font-bold text-[#17151D] uppercase block">Account</label>
+ <div className="cartoon-card-sm p-2 bg-white text-[10px] font-mono text-[#4B4650] break-all">{authSession?.user?.email}</div>
+ <button onClick={handleSignOut} className="w-full font-mono text-[9px] font-bold text-[#726C78] hover:text-[#17151D] py-1 text-left">
+ → Sign Out
+ </button>
+ </div>
+
+ <div className="border-t border-[#17151D]/10 pt-2.5 space-y-1.5">
+ <label className="font-mono text-[9px] font-bold text-[#17151D] uppercase block">Change Password</label>
+ <input type="password" autoComplete="current-password" className="cartoon-input w-full text-xs" placeholder="Current password" value={pwCurrent} onChange={(e) => setPwCurrent(e.target.value)} />
+ <input type="password" autoComplete="new-password" className="cartoon-input w-full text-xs" placeholder="New password (min. 8 characters)" value={pwNew} onChange={(e) => setPwNew(e.target.value)} />
+ <input type="password" autoComplete="new-password" className="cartoon-input w-full text-xs" placeholder="Confirm new password" value={pwNewConfirm} onChange={(e) => setPwNewConfirm(e.target.value)} />
+ {pwError && <div className="text-[8px] font-mono text-red-500 font-bold">⚠️ {pwError}</div>}
+ {pwSuccess && <div className="text-[8px] font-mono text-[#2FBF82] font-bold">✓ {pwSuccess}</div>}
+ <button onClick={handleChangePassword} disabled={pwLoading} className="cartoon-btn w-full bg-white text-[#17151D] py-1.5 text-[10px] font-mono uppercase font-extrabold disabled:opacity-50">
+ {pwLoading ? "Updating…" : "Update Password"}
+ </button>
+ </div>
+
+ <div className="border-t border-[#17151D]/10 pt-2.5 space-y-2">
+ <div className="font-mono text-[9px] font-extrabold uppercase text-[#726C78]">App Information</div>
+ <div className="cartoon-card-sm p-2 bg-white text-[10px] space-y-1 font-mono text-[#4B4650]">
+ <div>• Version: 2.17.0 (Managed Cloud)</div>
+ <div>• Security: HTTPS & AES-256</div>
+ </div>
+ </div>
+
+ <div className="border-t border-[#17151D]/10 pt-2.5 space-y-1.5">
+ <label className="font-mono text-[9px] font-bold text-red-600 uppercase block">Danger Zone</label>
+ {!showDeleteAccount ? (
+ <button onClick={() => setShowDeleteAccount(true)} className="w-full font-mono text-[9px] font-bold text-red-500 hover:text-red-700 py-1 text-left">
+ → Delete Account
+ </button>
+ ) : (
+ <div className="cartoon-card-sm p-2.5 bg-red-50 space-y-1.5">
+ <div className="text-[9px] font-mono text-red-700 font-bold">
+ This permanently deletes your account and all associated data from our servers. This cannot be undone.
+ </div>
+ <input className="cartoon-input w-full text-xs" placeholder='Type "DELETE" to confirm' value={deleteConfirmText} onChange={(e) => setDeleteConfirmText(e.target.value)} />
+ <input type="password" autoComplete="current-password" className="cartoon-input w-full text-xs" placeholder="Your password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} />
+ {deleteError && <div className="text-[8px] font-mono text-red-600 font-bold">⚠️ {deleteError}</div>}
+ <div className="flex gap-1.5">
+ <button onClick={() => { setShowDeleteAccount(false); setDeleteConfirmText(""); setDeletePassword(""); setDeleteError(""); }} className="cartoon-btn flex-1 bg-white text-[#17151D] py-1.5 text-[10px] font-mono uppercase">
+ Cancel
+ </button>
+ <button onClick={handleDeleteAccount} disabled={deleteLoading} className="cartoon-btn flex-1 bg-red-600 text-white py-1.5 text-[10px] font-mono uppercase font-extrabold disabled:opacity-50">
+ {deleteLoading ? "Deleting…" : "Delete Forever"}
+ </button>
+ </div>
+ </div>
+ )}
+ </div>
+ </div>
+ </div>
+ )}
+ </div>
+ );
+ }
+
+ const sharedByCat = byCategory(shared.items);
+ const personalByCat = byCategory(personal.items);
+ const toReviewCount = shared.proposals.filter((p) => p.proposedById !== profile.userId).length;
+ const allCalItems = getAllCalendarItems();
+ const isReceivedViewer = currentRole === "received_viewer";
+ const validityDisplay = formatValidityPeriod(group?.startDate, group?.endDate);
+
+ return (
+ <div className="min-h-[100dvh] bg-[#0B0A10] font-body pb-12 text-[#17151D]">
+  <div className="h-2 w-full bg-gradient-to-r from-[#FF3D6E] via-[#F0559B] to-[#2DC7C0] border-b-2 border-[#17151D]/18" />
+
+ {saveWarning && (
+ <div className="max-w-2xl mx-auto px-2 mt-2">
+ <div className="cartoon-card bg-[#FBE2E4] text-[#A61B44] font-mono text-[9px] p-2 font-bold">
+ ⚠️ {saveWarning}
+ </div>
+ </div>
+ )}
+
+ {isReceivedViewer && (
+ <div className="max-w-2xl mx-auto px-2 mt-2">
+ <div className="cartoon-card bg-[#E6FBF9] border-[#2DC7C0] p-2 font-mono text-[10px] font-extrabold text-[#3D2A05] flex items-center justify-between">
+ <span>Received Rider (View-Only Mode) — Mark accommodation status below with Yes or No</span>
+ <span className="bg-[#2DC7C0] text-white px-1.5 py-0.2 rounded text-[8px] uppercase font-bold">View Only</span>
+ </div>
+ </div>
+ )}
+
+ <div className="max-w-2xl mx-auto px-2 pt-3 pb-2">
+ <div className="cartoon-card p-3 bg-[#FAF7F2]">
+ <div className="flex items-start justify-between gap-2">
+ <div className="min-w-0 flex-1">
+ <button onClick={leaveTripScreen} className="cartoon-btn inline-flex items-center bg-white text-[#726C78] hover:text-[#FF3D6E] font-mono text-[9px] font-bold px-1.5 py-0.5 mb-1 leading-none">
+ ← Back to riders
+ </button>
+ <div className="flex items-center gap-2 flex-wrap">
+ <h1 
+onClick={() => {
+ if (!isReceivedViewer) {
+ setRenameTripInput(group?.name || ""); 
+ setRenameStartDate(group?.startDate || "");
+ setRenameEndDate(group?.endDate || "");
+ setShowRenameTrip(true);
+ }
+ }}
+ className={`font-display text-base text-[#17151D] truncate ${!isReceivedViewer ? 'cursor-pointer hover:text-[#FF3D6E]' : ''}`}
+ title={!isReceivedViewer ? "Click to edit rider details" : ""}
+ >
+ <span className="truncate">{group?.name}</span>
+ </h1>
+ {validityDisplay && (
+ <span className="font-mono text-[9px] bg-[#F0EAFF] text-[#FF3D6E] font-bold px-1.5 py-0.2 rounded border border-[#17151D]/18">
+ {validityDisplay}
+ </span>
+ )}
+ </div>
+ </div>
+
+ <div className="flex flex-col gap-1 shrink-0 pt-0.5 w-[110px] px-1.5 border-x border-[#17151D]/10">
+ <span className="font-mono text-[7px] font-extrabold text-[#726C78] uppercase text-center">
+ Members ({group?.members?.length || 0})
+ </span>
+ <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+ {group?.members?.map((m) => (
+ <div
+ key={m.id}
+ title={`${m.name}${m.id === profile.userId ? " (you)" : ""}${m.role === 'received_viewer' ? " · Host/Viewer" : ""}`}
+ className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center font-mono text-[8px] font-extrabold border border-[#17151D]/18 ${
+ m.id === profile.userId ? "bg-[#FF3D6E] text-white" : "bg-white text-[#4B4650]"
+ }`}
+ >
+ {getInitials(m.name)}
+ </div>
+ ))}
+ </div>
+ </div>
+
+ <div className="flex flex-col items-end gap-1.5 shrink-0 pt-1.5">
+ <button 
+onClick={copyPasscode} 
+className="rm-pass px-2.5 py-1 text-right cursor-pointer transition-transform hover:-translate-y-0.5"
+ title="Click to copy passcode"
+ >
+ <div className="font-mono text-[6.5px] text-[#FF3D6E] uppercase font-bold tracking-[0.15em]">Backstage Pass</div>
+ <div className="font-mono text-white text-[11px] font-extrabold tracking-wider">{group?.code}</div>
+ </button>
+ <button 
+onClick={() => setShowShareModal(true)}
+ className="cartoon-btn bg-[#FF3D6E] text-white px-2 py-0.5 text-[8px] font-mono uppercase w-full text-center"
+ >
+ Share
+ </button>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <div className="max-w-2xl mx-auto px-2 mb-2.5">
+ <div className="grid grid-cols-4 gap-1.5">
+ <button
+ onClick={() => setTab("shared")}
+ className={`cartoon-btn py-1.5 px-1 font-display tracking-wide text-xs relative transition-all ${
+ tab === "shared" ? "bg-[#FF3D6E] text-white shadow-[0_3px_10px_-2px_rgba(0,0,0,0.4)]" : "bg-[#FAF7F2] text-[#17151D] hover:bg-[#F0EAFF]"
+ }`}
+ >
+ SHARED
+ {toReviewCount > 0 && tab !== "shared" && !isReceivedViewer && (
+ <span className="absolute -top-1 -right-1 bg-[#F0559B] text-white text-[8px] font-mono font-bold w-3.5 h-3.5 rounded-full border border-[#17151D]/18 flex items-center justify-center animate-pulse">{toReviewCount}</span>
+ )}
+ </button>
+ 
+{!isReceivedViewer && (
+ <button
+ onClick={() => setTab("mine")}
+ className={`cartoon-btn py-1.5 px-1 font-display tracking-wide text-xs relative transition-all ${
+ tab === "mine" ? "bg-[#FF3D6E] text-white shadow-[0_3px_10px_-2px_rgba(0,0,0,0.4)]" : "bg-[#FAF7F2] text-[#17151D] hover:bg-[#F0EAFF]"
+ }`}
+ >
+ MY RIDER
+ </button>
+ )}
+
+ <button
+ onClick={() => setTab("calendar")}
+ className={`cartoon-btn py-1.5 px-1 font-display tracking-wide text-xs relative transition-all ${
+ tab === "calendar" ? "bg-[#FF3D6E] text-white shadow-[0_3px_10px_-2px_rgba(0,0,0,0.4)]" : "bg-[#FAF7F2] text-[#17151D] hover:bg-[#F0EAFF]"
+ }`}
+ >
+ CALENDAR
+ </button>
+
+ <button
+ onClick={() => setTab("map")}
+ className={`cartoon-btn py-1.5 px-1 font-display tracking-wide text-xs relative transition-all ${
+ tab === "map" ? "bg-[#FF3D6E] text-white shadow-[0_3px_10px_-2px_rgba(0,0,0,0.4)]" : "bg-[#FAF7F2] text-[#17151D] hover:bg-[#F0EAFF]"
+ }`}
+ >
+ MAP
+ </button>
+ </div>
+ </div>
+
+ {(tab === "shared" || tab === "mine") && (
+ <div className="max-w-2xl mx-auto px-2 mb-2.5">
+ <div className="cartoon-card p-2 pr-10 bg-[#FAF7F2] relative flex items-center justify-between gap-2 flex-wrap">
+ <div className="flex items-center gap-1 flex-wrap">
+ <span className="font-mono text-[9px] font-extrabold text-[#726C78] uppercase mr-0.5">Filter:</span>
+ {["All", ...CATEGORIES].map((c) => {
+ const active = (tab === "shared" ? sharedFilter : mineFilter) === c;
+ const color = c === "All" ? "#17151D" : CATEGORY_COLORS[c];
+ return (
+ <button
+ key={c}
+ onClick={() => (tab === "shared" ? setSharedFilter(c) : setMineFilter(c))}
+ style={active ? { backgroundColor: color, color: '#FFFFFF' } : { borderColor: color, color: color }}
+ className={`font-mono text-[9px] font-bold px-2 py-0.5 rounded border transition-all ${
+ active ? "shadow-[0_1px_4px_rgba(0,0,0,0.3)]" : "bg-white hover:bg-black/5"
+ }`}
+ >
+ {c}
+ </button>
+ );
+ })}
+ </div>
+
+ <button
+ onClick={() => {
+ if (tab === "shared") {
+ setSharedViewMode(prev => prev === "tile" ? "list" : "tile");
+ } else {
+ setMineViewMode(prev => prev === "tile" ? "list" : "tile");
+ }
+ }}
+ title={(tab === "shared" ? sharedViewMode : mineViewMode) === "tile" ? "Switch to List View" : "Switch to Tile View"}
+ className="cartoon-btn p-1.5 bg-white text-[#17151D] hover:bg-[#FF3D6E] hover:text-white absolute top-2 right-2 flex items-center justify-center transition"
+ >
+ {(tab === "shared" ? sharedViewMode : mineViewMode) === "tile" ? (
+ <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+ <line x1="8" y1="6" x2="21" y2="6" strokeLinecap="round" />
+ <line x1="8" y1="12" x2="21" y2="12" strokeLinecap="round" />
+ <line x1="8" y1="18" x2="21" y2="18" strokeLinecap="round" />
+ <line x1="3" y1="6" x2="3.01" y2="6" strokeLinecap="round" strokeWidth="3" />
+ <line x1="3" y1="12" x2="3.01" y2="12" strokeLinecap="round" strokeWidth="3" />
+ <line x1="3" y1="18" x2="3.01" y2="18" strokeLinecap="round" strokeWidth="3" />
+ </svg>
+ ) : (
+ <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+ <rect x="3" y="3" width="7" height="7" rx="1" />
+ <rect x="14" y="3" width="7" height="7" rx="1" />
+ <rect x="3" y="14" width="7" height="7" rx="1" />
+ <rect x="14" y="14" width="7" height="7" rx="1" />
+ </svg>
+ )}
+ </button>
+ </div>
+ </div>
+ )}
+
+ {tab === "shared" && (
+ <div className="max-w-2xl mx-auto px-2 space-y-2.5">
+ {shared.proposals.length > 0 && !isReceivedViewer && (
+ <div className="cartoon-card p-2.5 bg-[#F3EEFF] border-[#FF3D6E]">
+ <div className="font-display text-xs text-[#17151D] mb-1.5 flex items-center gap-1.5">
+ <span>Pending Proposals</span>
+ <span className="bg-[#FF3D6E] text-white text-[9px] font-mono px-1 py-0.2 rounded font-bold border border-[#17151D]/18">{shared.proposals.length}</span>
+ </div>
+ <div className="space-y-1.5">
+ {shared.proposals.map((p) => (
+ <div key={p.id} className="cartoon-card-sm p-2 bg-white text-[11px] flex items-center justify-between gap-2">
+ <div className="min-w-0 flex-1">
+ <span className="font-extrabold font-display">
+ {p.type === "add" && `+ Add "${p.item.name}"`}
+ {p.type === "remove" && `− Remove "${p.itemName}"`}
+ {p.type === "edit" && `✎ Edit "${p.before.name}"`}
+ </span>
+ <span className="font-mono text-[9px] text-[#726C78] ml-1.5">by {p.proposedByName}</span>
+ </div>
+ <div className="flex gap-1 shrink-0">
+ {p.proposedById === profile.userId ? (
+ <button onClick={() => cancelOwnProposal(p)} className="cartoon-btn bg-[#FBE2E4] text-[#A61B44] px-2 py-0.2 text-[9px]">Cancel</button>
+ ) : (
+ <>
+ <button onClick={() => approveProposal(p)} className="cartoon-btn bg-[#E8FBF1] text-[#0E6B45] px-2 py-0.2 text-[9px]">✓</button>
+ <button onClick={() => rejectProposal(p)} className="cartoon-btn bg-[#FBE2E4] text-[#A61B44] px-2 py-0.2 text-[9px]">✕</button>
+ </>
+ )}
+ </div>
+ </div>
+ ))}
+ </div>
+ </div>
+ )}
+
+ {shared.items.length === 0 && shared.proposals.length === 0 && (
+ <div className="cartoon-card p-6 text-center bg-[#FAF7F2] space-y-2">
+ <div className="font-display text-lg text-[#17151D]">No Shared Items Yet</div>
+ {!isReceivedViewer && (
+ <div>
+ <button
+ onClick={() => { resetForm(); setShowAddShared(true); }}
+ className="cartoon-btn bg-[#FF3D6E] text-white px-3 py-1.5 font-display text-xs uppercase"
+ >
+ + Propose Item
+ </button>
+ </div>
+ )}
+ </div>
+ )}
+
+ {sharedViewMode === "tile" && Object.entries(sharedByCat)
+ .filter(([cat]) => sharedFilter === "All" || sharedFilter === cat)
+ .map(([cat, items]) => (
+ <div key={cat} className="cartoon-card p-2.5 bg-[#FAF7F2]">
+ <div className="font-mono text-[10px] uppercase font-extrabold tracking-wider mb-2 pb-1 border-b border-[#17151D]/18 flex items-center justify-between" style={{ color: CATEGORY_COLORS[cat] || "#17151D" }}>
+ <div className="flex items-center gap-1.5">
+ <span className="w-2 h-2 rounded-full border border-[#17151D]/18" style={{ backgroundColor: CATEGORY_COLORS[cat] || "#726C78" }} />
+ <span className="font-display text-sm">{cat}</span>
+ </div>
+ <span className="text-[9px] text-[#726C78] font-mono">{items.length} item(s)</span>
+ </div>
+ 
+<div className="space-y-1.5">
+ {items.map((it) => {
+ const optIns = it.optIns || [];
+ const optOuts = it.optOuts || [];
+ const myOpt = optIns.includes(profile?.userId) ? 'in' : optOuts.includes(profile?.userId) ? 'out' : null;
+ const pri = it.priority || "Big Deal";
+ const pStyle = PRIORITY_STYLES[pri] || PRIORITY_STYLES["Big Deal"];
+ const gmapsUrl = it.location && (it.location.startsWith('http') ? it.location : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(it.location)}`);
+
+ const itemAccs = (shared.accommodations && shared.accommodations[it.id]) || {};
+ const myAcc = itemAccs[profile.userId];
+
+ return (
+ <div 
+key={it.id} 
+onClick={() => { if (!isReceivedViewer) openEditShared(it); }}
+ className={`cartoon-card-sm px-2.5 py-1.5 bg-white flex items-center justify-between gap-2 text-[11px] relative transition ${!isReceivedViewer ? 'cursor-pointer hover:bg-[#F3EEFF]' : ''}`}
+ >
+ {!isReceivedViewer && (
+ <button 
+onClick={(e) => { e.stopPropagation(); proposeRemoval(it); }}
+ className="absolute -top-1.5 -right-1.5 bg-[#FBE2E4] text-[#A61B44] hover:bg-[#F6C9CE] w-4 h-4 rounded-full border border-[#17151D]/18 flex items-center justify-center font-bold text-[9px] shadow-[0_1px_4px_rgba(0,0,0,0.3)] z-10"
+ title="Propose removal"
+ >
+ ✕
+ </button>
+ )}
+
+ <div className="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap pr-1">
+ <span className={`font-mono text-[8px] font-extrabold w-3.5 h-3.5 rounded border border-[#17151D]/18 flex items-center justify-center shrink-0 ${pStyle.bg} ${pStyle.text}`}>
+ {pStyle.letter}
+ </span>
+ <span className="font-extrabold font-display text-xs truncate">{it.name}</span>
+ {it.location && (
+ <a href={gmapsUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="font-mono text-[8px] bg-[#E6FBF9] text-[#2DC7C0] px-1 py-0.2 rounded border border-[#2DC7C0]/40 truncate max-w-[100px]">
+ {it.location}
+ </a>
+ )}
+ {it.notes && <span className="text-[10px] text-[#726C78] italic truncate max-w-[90px]">"{it.notes}"</span>}
+ </div>
+
+ <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+ {(it.date || it.time) && (
+ <span className="font-mono text-[9px] bg-[#F0EAFF] text-[#17151D] px-1 py-0.2 rounded border border-[#17151D]/18 whitespace-nowrap">
+ {formatDateTimeLabel(it.date, it.time)}
+ </span>
+ )}
+
+ {isReceivedViewer ? (
+ <div className="flex items-center gap-1">
+ <button
+ onClick={(e) => { e.stopPropagation(); handleAccommodationToggle(it.id, 'yes'); }}
+ className={`cartoon-btn px-2 py-0.5 text-[10px] flex items-center gap-1 font-bold ${myAcc === 'yes' ? 'bg-[#2FBF82] text-white border-[#2FBF82]' : 'bg-white text-[#17151D]'}`}
+ >
+ Yes
+ </button>
+ <button
+ onClick={(e) => { e.stopPropagation(); handleAccommodationToggle(it.id, 'no'); }}
+ className={`cartoon-btn px-2 py-0.5 text-[10px] flex items-center gap-1 font-bold ${myAcc === 'no' ? 'bg-[#FBE2E4] text-[#A61B44] border-[#A61B44]' : 'bg-white text-[#17151D]'}`}
+ >
+ No
+ </button>
+ </div>
+ ) : (
+ <div className="flex items-center gap-1">
+ <button
+ onClick={(e) => { e.stopPropagation(); handleOptToggle(it.id, 'in'); }}
+ className={`cartoon-btn px-1.5 py-0.2 text-[8px] font-mono font-bold ${myOpt === 'in' ? 'bg-[#E8FBF1] text-[#0E6B45]' : 'bg-white text-[#0E6B45]'}`}
+ >
+ ✓ {optIns.length}
+ </button>
+ <button
+ onClick={(e) => { e.stopPropagation(); handleOptToggle(it.id, 'out'); }}
+ className={`cartoon-btn px-1.5 py-0.2 text-[8px] font-mono font-bold ${myOpt === 'out' ? 'bg-[#FBE2E4] text-[#A61B44]' : 'bg-white text-[#A61B44]'}`}
+ >
+ ✕ {optOuts.length}
+ </button>
+ </div>
+ )}
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ </div>
+ ))}
+
+ {sharedViewMode === "list" && (
+ <div className="cartoon-card p-3 bg-[#FAF7F2] space-y-2">
+ <div className="font-mono text-[10px] uppercase font-extrabold tracking-wider mb-2 pb-1 border-b border-[#17151D]/18 text-[#726C78]">
+ Condensed List View ({shared.items.filter(it => sharedFilter === "All" || it.category === sharedFilter).length})
+ </div>
+ <div className="space-y-1.5">
+ {sortItemsChronologically(shared.items.filter(it => sharedFilter === "All" || it.category === sharedFilter)).map((it) => {
+ const pri = it.priority || "Big Deal";
+ const pStyle = PRIORITY_STYLES[pri] || PRIORITY_STYLES["Big Deal"];
+ const catColor = CATEGORY_COLORS[it.category] || "#726C78";
+
+ return (
+ <div
+ key={it.id}
+ onClick={() => { if (!isReceivedViewer) openEditShared(it); }}
+ className={`cartoon-card-sm px-2.5 py-2 bg-white flex items-center justify-between gap-2 text-[11px] ${!isReceivedViewer ? 'cursor-pointer hover:bg-[#F3EEFF]' : ''}`}
+ >
+ <div className="flex items-center gap-2 min-w-0 flex-1">
+ <span className={`font-mono text-[9px] font-extrabold w-4 h-4 rounded border border-[#17151D]/18 flex items-center justify-center shrink-0 ${pStyle.bg} ${pStyle.text}`}>
+ {pStyle.letter}
+ </span>
+ <span className="font-extrabold font-display text-xs text-[#17151D] truncate">{it.name}</span>
+ </div>
+ <div className="flex items-center gap-2 shrink-0">
+ {it.date && (
+ <span className="font-mono text-[8px] font-bold text-[#726C78] whitespace-nowrap">
+ {formatDateLabel(it.date)}
+ </span>
+ )}
+ <span className="font-mono text-[8px] uppercase font-bold px-1.5 py-0.5 rounded text-white border border-[#17151D]/18" style={{ backgroundColor: catColor }}>
+ {it.category}
+ </span>
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ </div>
+ )}
+
+ {!isReceivedViewer && (
+ <button
+ onClick={() => { resetForm(); setShowAddShared(true); }}
+ className="cartoon-btn w-full bg-[#FF3D6E] text-white py-2 font-display text-xs tracking-wider uppercase shadow-[0_3px_10px_-2px_rgba(0,0,0,0.4)]"
+ >
+ + Propose New Item
+ </button>
+ )}
+ </div>
+ )}
+
+ {tab === "mine" && !isReceivedViewer && (
+ <div className="max-w-2xl mx-auto px-2 space-y-2.5">
+ {selectedPersonalIds.length > 0 && (
+ <div className="cartoon-card bg-[#FF3D6E] text-white p-2 flex items-center justify-between sticky top-2 z-20 shadow-[0_3px_10px_-2px_rgba(0,0,0,0.4)] text-xs">
+ <span className="font-mono font-bold">{selectedPersonalIds.length} selected</span>
+ <button onClick={handleAddSelectedToShared} className="cartoon-btn bg-[#1FD65E] text-[#062E14] px-2.5 py-0.5 font-display text-[9px] uppercase font-extrabold">
+ Add to Shared
+ </button>
+ </div>
+ )}
+
+ {personal.items.length === 0 && (
+ <div className="cartoon-card p-6 text-center bg-[#FAF7F2] space-y-2">
+ <div className="font-display text-lg text-[#17151D]">Your Rider is Empty</div>
+ <div>
+ <button
+ onClick={() => { resetForm(); setShowAddPersonal(true); }}
+ className="cartoon-btn bg-[#FF3D6E] text-white px-3 py-1.5 font-display text-xs uppercase"
+ >
+ + Add Private Item
+ </button>
+ </div>
+ </div>
+ )}
+
+ {mineViewMode === "tile" && Object.entries(personalByCat)
+ .filter(([cat]) => mineFilter === "All" || mineFilter === cat)
+ .map(([cat, items]) => (
+ <div key={cat} className="cartoon-card p-2.5 bg-[#FAF7F2]">
+ <div className="font-mono text-[10px] uppercase font-extrabold tracking-wider mb-2 pb-1 border-b border-[#17151D]/18 flex items-center justify-between" style={{ color: CATEGORY_COLORS[cat] || "#17151D" }}>
+ <div className="flex items-center gap-1.5">
+ <span className="w-2 h-2 rounded-full border border-[#17151D]/18" style={{ backgroundColor: CATEGORY_COLORS[cat] || "#726C78" }} />
+ <span className="font-display text-sm">{cat}</span>
+ </div>
+ <span className="text-[9px] text-[#726C78] font-mono">{items.length} item(s)</span>
+ </div>
+ 
+<div className="space-y-1.5">
+ {items.map((it) => {
+ const isAlreadyShared = shared.items.some(s => s.name.trim().toLowerCase() === it.name.trim().toLowerCase()) ||
+ shared.proposals.some(p => p.type === 'add' && p.item.name.trim().toLowerCase() === it.name.trim().toLowerCase());
+ const isSelected = selectedPersonalIds.includes(it.id);
+ const pri = it.priority || "Big Deal";
+ const pStyle = PRIORITY_STYLES[pri] || PRIORITY_STYLES["Big Deal"];
+ const gmapsUrl = it.location && (it.location.startsWith('http') ? it.location : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(it.location)}`);
+
+ return (
+ <div 
+key={it.id} 
+onClick={() => openEditPersonal(it)}
+ className="cartoon-card-sm px-2.5 py-1.5 bg-white flex items-center justify-between gap-2 text-[11px] relative cursor-pointer hover:bg-[#F3EEFF] transition"
+ >
+ <button 
+onClick={(e) => { e.stopPropagation(); removePersonal(it.id); }}
+ className="absolute -top-1.5 -right-1.5 bg-[#FBE2E4] text-[#A61B44] hover:bg-[#F6C9CE] w-4 h-4 rounded-full border border-[#17151D]/18 flex items-center justify-center font-bold text-[9px] shadow-[0_1px_4px_rgba(0,0,0,0.3)] z-10"
+ title="Delete item"
+ >
+ ✕
+ </button>
+
+ <div className="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap pr-1">
+ <input 
+type="checkbox"
+ checked={isSelected}
+ disabled={isAlreadyShared}
+ onClick={(e) => e.stopPropagation()}
+ onChange={(e) => { e.stopPropagation(); toggleSelectPersonal(it.id); }}
+ className={`w-3.5 h-3.5 rounded border border-[#17151D]/18 accent-[#FF3D6E] shrink-0 ${isAlreadyShared ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+ />
+ <span className={`font-mono text-[8px] font-extrabold w-3.5 h-3.5 rounded border border-[#17151D]/18 flex items-center justify-center shrink-0 ${pStyle.bg} ${pStyle.text}`}>
+ {pStyle.letter}
+ </span>
+ <span className="font-extrabold font-display text-xs truncate">{it.name}</span>
+ {isAlreadyShared && <span className="font-mono text-[8px] bg-[#F0EAFF] text-[#FF3D6E] font-bold px-1 rounded border border-[#17151D]/18">shared</span>}
+ {it.location && (
+ <a href={gmapsUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="font-mono text-[8px] bg-[#E6FBF9] text-[#2DC7C0] px-1 py-0.2 rounded border border-[#2DC7C0]/40 truncate max-w-[100px]">
+ {it.location}
+ </a>
+ )}
+ {it.notes && <span className="text-[10px] text-[#726C78] italic truncate max-w-[80px]">"{it.notes}"</span>}
+ </div>
+
+ <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+ {(it.date || it.time) && (
+ <span className="font-mono text-[9px] bg-[#F0EAFF] text-[#17151D] px-1 py-0.2 rounded border border-[#17151D]/18 whitespace-nowrap">
+ {formatDateTimeLabel(it.date, it.time)}
+ </span>
+ )}
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ </div>
+ ))}
+
+ {mineViewMode === "list" && (
+ <div className="cartoon-card p-3 bg-[#FAF7F2] space-y-2">
+ <div className="font-mono text-[10px] uppercase font-extrabold tracking-wider mb-2 pb-1 border-b border-[#17151D]/18 text-[#726C78]">
+ Condensed List View ({personal.items.filter(it => mineFilter === "All" || it.category === mineFilter).length})
+ </div>
+ <div className="space-y-1.5">
+ {sortItemsChronologically(personal.items.filter(it => mineFilter === "All" || it.category === mineFilter)).map((it) => {
+ const pri = it.priority || "Big Deal";
+ const pStyle = PRIORITY_STYLES[pri] || PRIORITY_STYLES["Big Deal"];
+ const catColor = CATEGORY_COLORS[it.category] || "#726C78";
+
+ return (
+ <div
+ key={it.id}
+ onClick={() => openEditPersonal(it)}
+ className="cartoon-card-sm px-2.5 py-2 bg-white flex items-center justify-between gap-2 text-[11px] cursor-pointer hover:bg-[#F3EEFF]"
+ >
+ <div className="flex items-center gap-2 min-w-0 flex-1">
+ <span className={`font-mono text-[9px] font-extrabold w-4 h-4 rounded border border-[#17151D]/18 flex items-center justify-center shrink-0 ${pStyle.bg} ${pStyle.text}`}>
+ {pStyle.letter}
+ </span>
+ <span className="font-extrabold font-display text-xs text-[#17151D] truncate">{it.name}</span>
+ </div>
+ <div className="flex items-center gap-2 shrink-0">
+ {it.date && (
+ <span className="font-mono text-[8px] font-bold text-[#726C78] whitespace-nowrap">
+ {formatDateLabel(it.date)}
+ </span>
+ )}
+ <span className="font-mono text-[8px] uppercase font-bold px-1.5 py-0.5 rounded text-white border border-[#17151D]/18" style={{ backgroundColor: catColor }}>
+ {it.category}
+ </span>
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ </div>
+ )}
+
+ <button
+ onClick={() => { resetForm(); setShowAddPersonal(true); }}
+ className="cartoon-btn w-full bg-[#FF3D6E] text-white py-2 font-display text-xs tracking-wider uppercase shadow-[0_3px_10px_-2px_rgba(0,0,0,0.4)]"
+ >
+ + Add To Private Rider
+ </button>
+ </div>
+ )}
+
+ {tab === "calendar" && (
+ <div className="max-w-2xl mx-auto px-2 space-y-2.5">
+ <div className="cartoon-card p-2.5 bg-[#FAF7F2]">
+ <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
+ <div className="flex gap-1 bg-[#17151D]/10 p-0.5 rounded border border-[#17151D]/18">
+ {["month", "week", "day"].map((mode) => (
+ <button
+ key={mode}
+ onClick={() => setCalendarMode(mode)}
+ className={`font-mono text-[9px] uppercase font-extrabold px-2 py-0.5 rounded transition ${
+ calendarMode === mode ? "bg-[#FF3D6E] text-white border border-[#17151D]/18" : "text-[#726C78]"
+ }`}
+ >
+ {mode}
+ </button>
+ ))}
+ </div>
+ <button onClick={() => setCalDate(new Date())} className="cartoon-btn bg-[#F0EAFF] text-[#17151D] px-2 py-0.5 font-mono text-[9px] uppercase">
+ Today
+ </button>
+ </div>
+
+ <div className="flex items-center justify-between pt-1.5 border-t border-[#17151D]/10">
+ <button onClick={() => shiftCalendar(-1)} className="cartoon-btn bg-white px-2 py-0.5 font-mono text-[9px] font-bold">← Prev</button>
+ <div className="font-display text-sm text-[#17151D]">
+ {calendarMode === "month" && calDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+ {calendarMode === "week" && `Week of ${calDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`}
+ {calendarMode === "day" && calDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+ </div>
+ <button onClick={() => shiftCalendar(1)} className="cartoon-btn bg-white px-2 py-0.5 font-mono text-[9px] font-bold">Next →</button>
+ </div>
+ </div>
+
+ {calendarMode === "month" && (() => {
+ const year = calDate.getFullYear();
+ const month = calDate.getMonth();
+ const firstDay = new Date(year, month, 1).getDay();
+ const daysInMonth = new Date(year, month + 1, 0).getDate();
+ const days = [];
+
+ for (let i = 0; i < firstDay; i++) days.push(null);
+ for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i));
+ const MAX_SHOWN = 3;
+
+ return (
+ <div className="cartoon-card p-2.5 bg-[#FAF7F2]">
+ <div className="grid grid-cols-7 gap-1 text-center font-mono text-[9px] font-extrabold text-[#726C78] uppercase mb-1.5">
+ <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+ </div>
+ <div className="grid grid-cols-7 gap-1 items-stretch">
+ {days.map((d, idx) => {
+ if (!d) return <div key={idx} className="min-h-[64px] bg-black/5 rounded border border-transparent" />;
+ const dateStr = formatISODate(d);
+ const dayItems = allCalItems.filter(i => i.date === dateStr);
+ const shownItems = dayItems.slice(0, MAX_SHOWN);
+ const extraCount = dayItems.length - shownItems.length;
+ const isToday = formatISODate(new Date()) === dateStr;
+
+ return (
+ <div
+ key={idx}
+ onClick={() => { setCalDate(d); setCalendarMode("day"); }}
+ className={`min-h-[64px] p-1 rounded border border-[#17151D]/18 flex flex-col cursor-pointer transition ${
+ isToday ? "bg-[#F0EAFF] shadow-[0_3px_10px_-2px_rgba(0,0,0,0.4)]" : "bg-white hover:bg-black/5 shadow-[0_1px_4px_rgba(0,0,0,0.3)]"
+ }`}
+ >
+ <div className="flex items-center justify-between leading-none mb-0.5">
+ <span className={`font-mono text-[9px] font-extrabold ${isToday ? "text-[#FF3D6E]" : "text-[#17151D]"}`}>{d.getDate()}</span>
+ {dayItems.length > 0 && (
+ <span className="font-mono text-[7px] bg-[#17151D] text-white px-1 rounded-full font-bold">
+ {dayItems.length}
+ </span>
+ )}
+ </div>
+ <div className="space-y-0.5 flex-1">
+ {shownItems.map((item) => (
+ <div 
+key={item.id} 
+className="text-[7.5px] font-mono font-bold px-1 py-0.3 rounded text-white border border-black/30 leading-[1.25] break-words" 
+style={{ backgroundColor: CATEGORY_COLORS[item.category] || "#726C78" }}
+ >
+ {item.name}
+ </div>
+ ))}
+ {extraCount > 0 && (
+ <div className="text-[7px] font-mono font-bold text-[#726C78] px-1">+{extraCount} more</div>
+ )}
+ </div>
+ </div>
+ );
+ })}
+ </div>
+ </div>
+ );
+ })()}
+
+ {calendarMode === "week" && (() => {
+ const startOfWeek = new Date(calDate);
+ startOfWeek.setDate(calDate.getDate() - calDate.getDay());
+ const weekDays = Array.from({ length: 7 }, (_, i) => {
+ const d = new Date(startOfWeek);
+ d.setDate(startOfWeek.getDate() + i);
+ return d;
+ });
+
+ return (
+ <div className="space-y-1.5">
+ {weekDays.map((d, idx) => {
+ const dateStr = formatISODate(d);
+ const dayItems = allCalItems.filter(i => i.date === dateStr);
+ const isToday = formatISODate(new Date()) === dateStr;
+
+ return (
+ <div key={idx} className={`cartoon-card p-2.5 bg-[#FAF7F2] ${isToday ? "border-[#FF3D6E]" : ""}`}>
+ <div className="flex items-center justify-between mb-1.5">
+ <span className={`font-display text-xs ${isToday ? "text-[#FF3D6E]" : "text-[#17151D]"}`}>
+ {d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+ </span>
+ <span className="font-mono text-[9px] font-bold text-[#726C78] bg-black/5 px-1.5 py-0.2 rounded">{dayItems.length} items</span>
+ </div>
+ {dayItems.length === 0 ? (
+ <div className="text-[10px] text-[#726C78] italic">No items</div>
+ ) : (
+ <div className="space-y-1">
+ {dayItems.map(item => (
+ <div key={item.id} className="cartoon-card-sm p-1.5 bg-white flex items-center justify-between text-[11px]">
+ <div>
+ <span className="font-extrabold">{item.name}</span> {item.time && <span className="font-mono text-[9px] text-[#FF3D6E]">@ {formatTimeLabel12(item.time)}</span>}
+ </div>
+ <span className="font-mono text-[8px] font-bold px-1 py-0.2 rounded text-white border border-[#17151D]/18" style={{ backgroundColor: CATEGORY_COLORS[item.category] || "#726C78" }}>
+ {item.category}
+ </span>
+ </div>
+ ))}
+ </div>
+ )}
+ </div>
+ );
+ })}
+ </div>
+ );
+ })()}
+
+ {calendarMode === "day" && (() => {
+ const dateStr = formatISODate(calDate);
+ const dayItems = allCalItems.filter(i => i.date === dateStr);
+
+ return (
+ <div className="cartoon-card p-3 bg-[#FAF7F2]">
+ <div className="font-display text-base text-[#17151D] mb-1">
+ {calDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+ </div>
+ <div className="font-mono text-[9px] font-semibold text-[#726C78] mb-2">{dayItems.length} scheduled item(s)</div>
+
+ {dayItems.length === 0 ? (
+ <div className="text-center py-6 border border-dashed border-[#17151D]/30 rounded-lg bg-white/50">
+ <div className="font-mono text-[10px] text-[#726C78] font-semibold">Nothing scheduled.</div>
+ </div>
+ ) : (
+ <div className="space-y-1.5">
+ {dayItems.map(item => (
+ <div key={item.id} className="cartoon-card-sm p-2 bg-white flex items-center justify-between gap-2 text-[11px]">
+ <div>
+ <span className="font-extrabold">{item.name}</span> {item.time && <span className="font-mono text-[9px] text-[#FF3D6E]">@ {formatTimeLabel12(item.time)}</span>}
+ {item.notes && <div className="text-[9px] text-[#726C78] italic">"{item.notes}"</div>}
+ </div>
+ <span className="font-mono text-[8px] font-bold uppercase px-1.5 py-0.2 rounded text-white border border-[#17151D]/18 shrink-0" style={{ backgroundColor: CATEGORY_COLORS[item.category] || "#726C78" }}>
+ {item.category}
+ </span>
+ </div>
+ ))}
+ </div>
+ )}
+ </div>
+ );
+ })()}
+ </div>
+ )}
+
+ {tab === "map" && (
+ <div className="max-w-2xl mx-auto px-2">
+ <MapView 
+sharedItems={shared.items} 
+personalItems={personal.items} 
+categoryColors={CATEGORY_COLORS}
+ onEditItem={handleEditFromMap}
+ tripName={group?.name}
+ />
+ </div>
+ )}
+
+ {showRenameTrip && (
+ <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-50 px-2 pt-10 pb-10 overflow-y-auto" onClick={() => setShowRenameTrip(false)}>
+ <div className="cartoon-card p-3.5 w-full max-w-xs bg-[#FAF7F2] space-y-3" onClick={(e) => e.stopPropagation()}>
+ <div className="font-display text-base text-[#17151D]">Edit Rider Details</div>
+ <div className="space-y-2">
+ <div>
+ <label className="font-mono text-[8px] font-bold text-[#726C78] uppercase block mb-0.5">Rider Name</label>
+ <input
+ autoFocus
+ className="cartoon-input w-full text-xs"
+ value={renameTripInput}
+ onChange={(e) => setRenameTripInput(e.target.value)}
+ />
+ </div>
+ <DateRangePicker
+ startDate={renameStartDate}
+ endDate={renameEndDate}
+ onChange={(s, e) => { setRenameStartDate(s); setRenameEndDate(e); }}
+ />
+ </div>
+ <div className="flex gap-2 pt-1">
+ <button onClick={() => setShowRenameTrip(false)} className="cartoon-btn flex-1 bg-white py-1.5 font-display text-[11px]">Cancel</button>
+ <button onClick={submitRenameTrip} className="cartoon-btn flex-1 bg-[#FF3D6E] text-white py-1.5 font-display text-[11px]">Save</button>
+ </div>
+ </div>
+ </div>
+ )}
+
+ {showShareModal && (
+ <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-50 px-2 pt-10 pb-10 overflow-y-auto" onClick={() => setShowShareModal(false)}>
+ <div className="cartoon-card p-3.5 w-full max-w-xs bg-[#FAF7F2]" onClick={(e) => e.stopPropagation()}>
+ <div className="font-display text-base text-[#17151D] mb-1">Share Rider</div>
+ <div className="font-mono text-[9px] font-semibold text-[#726C78] mb-3">Choose how you want to share this rider.</div>
+ <div className="space-y-3">
+ <div className="cartoon-card-sm p-2.5 bg-white space-y-1.5">
+ <div className="font-mono text-[9px] uppercase font-extrabold text-[#17151D]">1. Full Collaborative Passcode</div>
+ <div className="text-[10px] text-[#726C78]">Allows others to propose, edit, and collaborate.</div>
+ <div className="flex gap-1.5 items-center pt-1">
+ <div className="rm-pass flex-1 text-center px-2 py-1.5">
+ <div className="font-mono text-[10px] font-extrabold text-white tracking-wider">{group?.code}</div>
+ </div>
+ <button onClick={() => handleCopyShareInvite("collaborate")} className="cartoon-btn bg-[#FF3D6E] text-white px-2 py-1 text-[9px] font-mono shrink-0">
+ {shareCopiedStatus ? "✓ Copied!" : "Copy Invite"}
+ </button>
+ </div>
+ </div>
+
+ <div className="cartoon-card-sm p-2.5 bg-[#E6FBF9] border-[#2DC7C0] space-y-1.5">
+ <div className="font-mono text-[9px] uppercase font-extrabold text-[#3D2A05]">2. View-Only Host Passcode</div>
+ <div className="text-[10px] text-[#4B4650]">Others cannot edit — they can only mark Yes or No for accommodation.</div>
+ <div className="flex gap-1.5 items-center pt-1">
+ <div className="rm-pass flex-1 text-center px-2 py-1.5">
+ <div className="font-mono text-[10px] font-extrabold text-[#2DC7C0] tracking-wider">{group?.viewCode || ("V-" + group?.code)}</div>
+ </div>
+ <button onClick={() => handleCopyShareInvite("view_only")} className="cartoon-btn bg-[#2DC7C0] text-white px-2 py-1 text-[9px] font-mono shrink-0">
+ Copy Host Code
+ </button>
+ </div>
+ </div>
+
+ <button onClick={() => setShowShareModal(false)} className="w-full font-mono text-[9px] font-bold text-[#726C78] hover:text-[#17151D] py-1">
+ Close
+ </button>
+ </div>
+ </div>
+ </div>
+ )}
+
+ {(showAddShared || showAddPersonal || editSharedItem || editPersonalItem) && !isReceivedViewer && (
+ <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-50 p-2 pt-10 pb-10 overflow-y-auto" onClick={resetForm}>
+ <div className="cartoon-card p-3.5 w-full max-w-xs bg-[#FAF7F2] my-auto" onClick={(e) => e.stopPropagation()}>
+ <div className="flex items-center justify-between mb-2.5 pb-1.5 border-b border-[#17151D]/18">
+ <div className="font-display text-base text-[#17151D]">
+ {showAddShared && "Propose Item"}
+ {showAddPersonal && "Add Private Item"}
+ {(editSharedItem || editPersonalItem) && "Edit Item"}
+ </div>
+ </div>
+ 
+<div className="space-y-2.5 text-[11px]">
+ <div>
+ <label className="font-mono text-[9px] font-extrabold text-[#17151D] uppercase block mb-0.5">
+ What do you need <span className="text-[#FF3D6E] font-bold">*</span>
+ </label>
+ <input
+ autoFocus
+ className={`cartoon-input w-full text-xs ${nameError ? 'border-red-500 bg-red-500/10' : ''}`}
+ placeholder="e.g. Catamaran tour"
+ value={formName}
+ onChange={(e) => {
+ setFormName(e.target.value);
+ if (e.target.value.trim()) setNameError(false);
+ }}
+ />
+ {nameError && <div className="text-[8px] font-mono text-red-500 font-bold mt-0.5">⚠️ Required</div>}
+ </div>
+
+ <div className="grid grid-cols-2 gap-2">
+ <div>
+ <label className="font-mono text-[9px] font-extrabold text-[#17151D] uppercase block mb-0.5">Category <span className="text-[#FF3D6E] font-bold">*</span></label>
+ <select
+ className="cartoon-input w-full font-bold text-[11px] transition-colors cursor-pointer"
+ style={{ borderColor: CATEGORY_COLORS[formCategory] || "#17151D", color: CATEGORY_COLORS[formCategory] || "#17151D" }}
+ value={formCategory}
+ onChange={(e) => setFormCategory(e.target.value)}
+ >
+ {CATEGORIES.map((c) => <option key={c} value={c} style={{ color: '#17151D', backgroundColor: '#FAF7F2' }}>{c}</option>)}
+ </select>
+ </div>
+
+ <div>
+ <label className="font-mono text-[9px] font-extrabold text-[#17151D] uppercase block mb-0.5">Priority <span className="text-[#FF3D6E] font-bold">*</span></label>
+ <select
+ className="cartoon-input w-full font-bold text-[11px] transition-colors cursor-pointer"
+ style={{ backgroundColor: PRIORITY_STYLES[formPriority]?.hex || "#2FBF82", color: '#FFFFFF', borderColor: '#17151D' }}
+ value={formPriority}
+ onChange={(e) => setFormPriority(e.target.value)}
+ >
+ {PRIORITIES.map((p) => {
+ const pStyle = PRIORITY_STYLES[p];
+ return (
+ <option key={p} value={p} style={{ backgroundColor: '#FAF7F2', color: '#17151D' }}>
+ {p} ({pStyle.letter})
+ </option>
+ );
+ })}
+ </select>
+ </div>
+ </div>
+
+ <div className="grid grid-cols-2 gap-2">
+ <div>
+ <label className="font-mono text-[9px] font-bold text-[#726C78] uppercase block mb-0.5">Date</label>
+ <input
+ type="date"
+ className="cartoon-input w-full font-mono text-[10px]"
+ value={formDate}
+ onChange={(e) => setFormDate(e.target.value)}
+ min={group?.startDate || undefined}
+ max={group?.endDate || undefined}
+ />
+ </div>
+ <div>
+ <label className="font-mono text-[9px] font-bold text-[#726C78] uppercase block mb-0.5 flex items-center justify-between">
+ <span>Time</span>
+ {formTime && (
+ <span className={`font-mono text-[9px] font-extrabold px-1.5 py-0.2 rounded ${formTime < "12:00" ? "bg-[#F2732D]/15 text-[#F2732D]" : "bg-[#3D5FFF]/15 text-[#3D5FFF]"}`}>
+ {formatTimeLabel12(formTime)}
+ </span>
+ )}
+ </label>
+ <input type="time" className="cartoon-input w-full font-mono text-[10px]" value={formTime} onChange={(e) => setFormTime(e.target.value)} />
+ </div>
+ </div>
+
+ <div>
+ <label className="font-mono text-[9px] font-bold text-[#726C78] uppercase block mb-0.5">Address / Location</label>
+ <input className="cartoon-input w-full text-[11px]" placeholder="e.g. Eagle Beach or lat,lon" value={formLocation} onChange={(e) => setFormLocation(e.target.value)} />
+ </div>
+
+ <div>
+ <label className="font-mono text-[9px] font-bold text-[#726C78] uppercase block mb-0.5">Notes</label>
+ <textarea className="cartoon-input w-full text-[11px] resize-none" rows={1} placeholder="Optional notes..." value={formNotes} onChange={(e) => setFormNotes(e.target.value)} />
+ </div>
+
+ <div className="flex gap-2 pt-1">
+ <button onClick={resetForm} className="cartoon-btn flex-1 bg-white py-1.5 font-display text-[11px] uppercase">Cancel</button>
+ <button
+ onClick={
+ showAddShared ? submitProposeAdd :
+ editSharedItem ? submitDirectEditShared :
+ editPersonalItem ? submitEditPersonal :
+ submitAddPersonal
+ }
+ className="cartoon-btn flex-1 bg-[#FF3D6E] text-white py-1.5 font-display text-[11px] uppercase"
+ >
+ {showAddShared && "Propose"}
+ {editSharedItem && "Save"}
+ {showAddPersonal && "Add"}
+ {editPersonalItem && "Save"}
+ </button>
+ </div>
+ </div>
+ </div>
+ </div>
+ )}
+ </div>
+ );
+ }
+
+ function Root() {
+ return (
+ <React.Fragment>
+ <style>{FONT_STYLES}</style>
+ <App />
+ </React.Fragment>
+ );
+ }
+
+ const root = ReactDOM.createRoot(document.getElementById("root"));
+ root.render(<Root />);
+ </script>
+</body>
+</html>
