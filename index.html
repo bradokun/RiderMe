@@ -901,6 +901,12 @@ localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.string
  if (rawHash.includes("type=recovery") || rawSearch.includes("type=recovery")) {
  setPasswordRecoveryMode(true);
  }
+ // Newer Supabase projects redirect recovery links back as ?code=xxxx (PKCE flow)
+ // instead of #type=recovery — this app has no other flow that produces a bare
+ // "code" param, so its presence here can only mean a password-recovery link.
+ if (/[?&]code=/.test(rawSearch)) {
+ setPasswordRecoveryMode(true);
+ }
 
  // If Supabase rejected the link itself (expired / already used / invalid),
  // it redirects back with an error in the hash instead of a token — surface
