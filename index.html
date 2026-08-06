@@ -799,7 +799,8 @@ localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.string
  const [authLoading, setAuthLoading] = useState(false);
 
  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
- const [debugBannerDismissed, setDebugBannerDismissed] = useState(false);
+ const [forgotStep, setForgotStep] = useState("request"); // request | verify
+ const [recoveryCodeInput, setRecoveryCodeInput] = useState("");
  const [recoveryNewPassword, setRecoveryNewPassword] = useState("");
  const [recoveryNewPasswordConfirm, setRecoveryNewPasswordConfirm] = useState("");
  const [recoveryError, setRecoveryError] = useState("");
@@ -1052,7 +1053,25 @@ localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.string
  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.href });
  setAuthLoading(false);
  if (error) { setAuthError(error.message); return; }
- setAuthMessage("Password reset email sent — check your inbox.");
+ setForgotStep("verify");
+ setAuthMessage("");
+ }
+
+ async function handleVerifyRecoveryCode() {
+ setAuthError("");
+ const email = authEmail.trim();
+ const code = recoveryCodeInput.trim();
+ if (!code) { setAuthError("Enter the code from your email."); return; }
+ const supabase = getSupabaseClient();
+ if (!supabase) { setAuthError("Cloud service unavailable — check your connection."); return; }
+ setAuthLoading(true);
+ const { error } = await supabase.auth.verifyOtp({ email, token: code, type: "recovery" });
+ setAuthLoading(false);
+ if (error) { setAuthError(error.message); return; }
+ // a valid code just established a real recovery session — no URL involved at all
+ setPasswordRecoveryMode(true);
+ setForgotStep("request");
+ setRecoveryCodeInput("");
  }
 
  async function handleCompletePasswordRecovery() {
@@ -1716,22 +1735,6 @@ let newStatus = status;
  return [...sItems, ...pItems].filter(i => !!i.date);
  }
 
- if ((window.__preservedAuthHash || window.__preservedAuthSearch) && !debugBannerDismissed) {
- return (
- <div style={{ position: "fixed", inset: 0, background: "#000", color: "#0f0", fontFamily: "monospace", fontSize: "11px", padding: "16px", zIndex: 99999, overflowWrap: "break-word", overflowY: "auto" }}>
- <div style={{ color: "#fff", fontWeight: "bold", marginBottom: "10px" }}>DEBUG — captured on page load:</div>
- <div style={{ marginBottom: "10px" }}>hash: {JSON.stringify(window.__preservedAuthHash)}</div>
- <div style={{ marginBottom: "16px" }}>search: {JSON.stringify(window.__preservedAuthSearch)}</div>
- <button
- onClick={() => setDebugBannerDismissed(true)}
- style={{ background: "#0f0", color: "#000", padding: "8px 14px", fontWeight: "bold", border: "none" }}
- >
- Continue to app
- </button>
- </div>
- );
- }
-
  if (loading || authSession === undefined) {
  return (
  <div className="min-h-[100dvh] flex items-center justify-center bg-[#0B0A10]">
@@ -1812,8 +1815,10 @@ let newStatus = status;
 
  {authView === "forgot" ? (
  <div className="space-y-2">
+ {forgotStep === "request" ? (
+ <React.Fragment>
  <div className="font-display text-sm text-[#17151D]">Reset your password</div>
- <div className="font-mono text-[9px] text-[#726C78]">We'll email you a link to set a new password.</div>
+ <div className="font-mono text-[9px] text-[#726C78]">We'll email you a 6-digit code to verify it's you.</div>
  <input
  autoFocus
  type="email"
@@ -1824,13 +1829,35 @@ let newStatus = status;
  onKeyDown={(e) => { if (e.key === "Enter") handleAuthForgotPassword(); }}
  />
  {authError && <div className="text-[8px] font-mono text-red-500 font-bold">⚠️ {authError}</div>}
- {authMessage && <div className="text-[8px] font-mono text-[#2FBF82] font-bold">✓ {authMessage}</div>}
  <button onClick={handleAuthForgotPassword} disabled={authLoading} className="cartoon-btn w-full bg-[#FF3D6E] text-white py-2 text-xs font-display tracking-wider uppercase disabled:opacity-50">
- {authLoading ? "Sending…" : "Send Reset Link"}
+ {authLoading ? "Sending…" : "Send Reset Code"}
  </button>
  <button onClick={() => { setAuthView("login"); setAuthError(""); setAuthMessage(""); }} className="w-full font-mono text-[9px] font-bold text-[#726C78] hover:text-[#17151D] py-1">
  Back to Log In
  </button>
+ </React.Fragment>
+ ) : (
+ <React.Fragment>
+ <div className="font-display text-sm text-[#17151D]">Enter your code</div>
+ <div className="font-mono text-[9px] text-[#726C78]">Check {authEmail} for a 6-digit code and enter it below.</div>
+ <input
+ autoFocus
+ inputMode="numeric"
+ className="cartoon-input w-full text-xs tracking-[0.3em] text-center font-extrabold"
+ placeholder="123456"
+ value={recoveryCodeInput}
+ onChange={(e) => setRecoveryCodeInput(e.target.value)}
+ onKeyDown={(e) => { if (e.key === "Enter") handleVerifyRecoveryCode(); }}
+ />
+ {authError && <div className="text-[8px] font-mono text-red-500 font-bold">⚠️ {authError}</div>}
+ <button onClick={handleVerifyRecoveryCode} disabled={authLoading} className="cartoon-btn w-full bg-[#FF3D6E] text-white py-2 text-xs font-display tracking-wider uppercase disabled:opacity-50">
+ {authLoading ? "Verifying…" : "Verify Code"}
+ </button>
+ <button onClick={() => { setForgotStep("request"); setAuthError(""); setRecoveryCodeInput(""); }} className="w-full font-mono text-[9px] font-bold text-[#726C78] hover:text-[#17151D] py-1">
+ Use a different email
+ </button>
+ </React.Fragment>
+ )}
  </div>
  ) : (
  <div className="space-y-2">
