@@ -4,6 +4,13 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
  <title>RiderMe</title>
+ <!-- Must run before ANYTHING else, including Google Analytics below — gtag.js
+ auto-strips OAuth-style #access_token= fragments from the URL as a privacy
+ safeguard, which was silently eating Supabase's password-recovery tokens. -->
+ <script>
+ window.__preservedAuthHash = window.location.hash || "";
+ window.__preservedAuthSearch = window.location.search || "";
+ </script>
  <!-- Google tag (gtag.js) -->
  <script async src="https://www.googletagmanager.com/gtag/js?id=G-WZV5W47DWR"></script>
  <script>
@@ -30,11 +37,11 @@
  <div id="root"></div>
 
  <script type="text/babel">
- // Captured at the very first instant the script runs — before the Supabase
- // client is created and has a chance to auto-clean the recovery token out
- // of the URL bar, which it does as part of its own session detection.
- const __initialUrlHash = window.location.hash || "";
- const __initialUrlSearch = window.location.search || "";
+ // Captured by an inline script at the very top of <head>, before Google
+ // Analytics or any other script could touch (and strip) the URL — see there
+ // for why this can't just be captured here.
+ const __initialUrlHash = window.__preservedAuthHash || window.location.hash || "";
+ const __initialUrlSearch = window.__preservedAuthSearch || window.location.search || "";
 
  const { useState, useEffect, useCallback, useRef } = React;
 
