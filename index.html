@@ -30,6 +30,12 @@
  <div id="root"></div>
 
  <script type="text/babel">
+ // Captured at the very first instant the script runs — before the Supabase
+ // client is created and has a chance to auto-clean the recovery token out
+ // of the URL bar, which it does as part of its own session detection.
+ const __initialUrlHash = window.location.hash || "";
+ const __initialUrlSearch = window.location.search || "";
+
  const { useState, useEffect, useCallback, useRef } = React;
 
  // ---------- ADMINISTRATOR CLOUD CONFIGURATION ----------
@@ -888,9 +894,10 @@ localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.string
  // Belt-and-suspenders recovery detection: Supabase always stamps type=recovery
  // directly into the URL (hash for the implicit flow, query string for PKCE) —
  // check that directly rather than relying only on the PASSWORD_RECOVERY event,
- // which can be missed depending on load timing or client version.
- const rawHash = window.location.hash || "";
- const rawSearch = window.location.search || "";
+ // which can be missed depending on load timing or client version. Use the
+ // pre-captured values since Supabase's own client clears the live URL fast.
+ const rawHash = __initialUrlHash;
+ const rawSearch = __initialUrlSearch;
  if (rawHash.includes("type=recovery") || rawSearch.includes("type=recovery")) {
  setPasswordRecoveryMode(true);
  }
