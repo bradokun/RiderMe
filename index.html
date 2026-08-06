@@ -785,6 +785,12 @@ localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.string
  const [authMessage, setAuthMessage] = useState("");
  const [authLoading, setAuthLoading] = useState(false);
 
+ const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
+ const [recoveryNewPassword, setRecoveryNewPassword] = useState("");
+ const [recoveryNewPasswordConfirm, setRecoveryNewPasswordConfirm] = useState("");
+ const [recoveryError, setRecoveryError] = useState("");
+ const [recoveryLoading, setRecoveryLoading] = useState(false);
+
  const [pwCurrent, setPwCurrent] = useState("");
  const [pwNew, setPwNew] = useState("");
  const [pwNewConfirm, setPwNewConfirm] = useState("");
@@ -878,6 +884,30 @@ localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.string
  setCloudStatusDetail("Supabase client failed to initialize.");
  return;
  }
+
+ // Belt-and-suspenders recovery detection: Supabase always stamps type=recovery
+ // directly into the URL (hash for the implicit flow, query string for PKCE) —
+ // check that directly rather than relying only on the PASSWORD_RECOVERY event,
+ // which can be missed depending on load timing or client version.
+ const rawHash = window.location.hash || "";
+ const rawSearch = window.location.search || "";
+ if (rawHash.includes("type=recovery") || rawSearch.includes("type=recovery")) {
+ setPasswordRecoveryMode(true);
+ }
+
+ // If Supabase rejected the link itself (expired / already used / invalid),
+ // it redirects back with an error in the hash instead of a token — surface
+ // that clearly instead of silently dropping the person on a blank login screen.
+ if (rawHash.includes("error=")) {
+ const errParams = new URLSearchParams(rawHash.replace(/^#/, ""));
+ const errDesc = errParams.get("error_description");
+ setAuthView("forgot");
+ setAuthError(errDesc ? errDesc.replace(/\+/g, " ") : "That link is invalid or has expired. Please request a new one.");
+ if (window.history?.replaceState) {
+ window.history.replaceState({}, document.title, window.location.pathname);
+ }
+ }
+
  supabase.auth.getSession().then(({ data }) => {
  setAuthSession(data?.session || null);
  });
@@ -886,6 +916,11 @@ localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.string
  // access token — the user and their data haven't changed, so skip re-rendering
  // for it entirely rather than flashing the loading screen mid-session.
  if (event === "TOKEN_REFRESHED") return;
+ if (event === "PASSWORD_RECOVERY") {
+ // clicking the reset-password email link logs the user in via a temporary
+ // recovery session — gate the app until they actually set a new password.
+ setPasswordRecoveryMode(true);
+ }
  setAuthSession(session || null);
  });
 
@@ -997,6 +1032,25 @@ localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.string
  setAuthLoading(false);
  if (error) { setAuthError(error.message); return; }
  setAuthMessage("Password reset email sent — check your inbox.");
+ }
+
+ async function handleCompletePasswordRecovery() {
+ setRecoveryError("");
+ if (recoveryNewPassword.length < 8) { setRecoveryError("Password must be at least 8 characters."); return; }
+ if (recoveryNewPassword !== recoveryNewPasswordConfirm) { setRecoveryError("Passwords don't match."); return; }
+ const supabase = getSupabaseClient();
+ if (!supabase) { setRecoveryError("Cloud service unavailable."); return; }
+ setRecoveryLoading(true);
+ const { error } = await supabase.auth.updateUser({ password: recoveryNewPassword });
+ setRecoveryLoading(false);
+ if (error) { setRecoveryError(error.message); return; }
+ setPasswordRecoveryMode(false);
+ setRecoveryNewPassword("");
+ setRecoveryNewPasswordConfirm("");
+ // clear the recovery token out of the URL now that it's been consumed
+ if (window.history?.replaceState) {
+ window.history.replaceState({}, document.title, window.location.pathname);
+ }
  }
 
  async function handleSignOut() {
@@ -1645,6 +1699,47 @@ let newStatus = status;
  return (
  <div className="min-h-[100dvh] flex items-center justify-center bg-[#0B0A10]">
  <div className="font-mono text-[#FF3D6E] text-sm font-extrabold animate-pulse">RIDERME…</div>
+ </div>
+ );
+ }
+
+ if (passwordRecoveryMode) {
+ return (
+ <div className="min-h-[100dvh] bg-[#0B0A10] font-body flex items-center justify-center p-3 relative overflow-hidden">
+ <div className="rm-glow w-72 h-72 top-8 left-1/2 -translate-x-1/2"></div>
+ <div className="w-full max-w-xs space-y-3 text-center relative z-10">
+ <h1 className="font-wordmark text-4xl text-white tracking-wide drop-shadow-[0_4px_14px_rgba(255,61,110,0.35)]">RIDERME</h1>
+ <div className="cartoon-card p-4 bg-[#FAF7F2] space-y-2.5 text-left">
+ <div className="font-display text-sm text-[#17151D]">Set a new password</div>
+ <div className="font-mono text-[9px] text-[#726C78]">You're almost there — choose a new password to finish resetting your account.</div>
+ <input
+ autoFocus
+ type="password"
+ autoComplete="new-password"
+ className="cartoon-input w-full text-xs"
+ placeholder="New password (min. 8 characters)"
+ value={recoveryNewPassword}
+ onChange={(e) => setRecoveryNewPassword(e.target.value)}
+ />
+ <input
+ type="password"
+ autoComplete="new-password"
+ className="cartoon-input w-full text-xs"
+ placeholder="Confirm new password"
+ value={recoveryNewPasswordConfirm}
+ onChange={(e) => setRecoveryNewPasswordConfirm(e.target.value)}
+ onKeyDown={(e) => { if (e.key === "Enter") handleCompletePasswordRecovery(); }}
+ />
+ {recoveryError && <div className="text-[8px] font-mono text-red-500 font-bold">⚠️ {recoveryError}</div>}
+ <button
+ onClick={handleCompletePasswordRecovery}
+ disabled={recoveryLoading}
+ className="cartoon-btn w-full bg-[#FF3D6E] text-white py-2 text-xs font-display tracking-wider uppercase disabled:opacity-50"
+ >
+ {recoveryLoading ? "Updating…" : "Set New Password"}
+ </button>
+ </div>
+ </div>
  </div>
  );
  }
