@@ -810,6 +810,7 @@ localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.string
  const [error, setError] = useState("");
 
  const [showHamburgerMenu, setShowHamburgerMenu] = useState(false);
+ const [menuTab, setMenuTab] = useState("settings"); // settings | about
  const [profileNameInput, setProfileNameInput] = useState("");
  const [nameSetupError, setNameSetupError] = useState("");
 
@@ -1654,6 +1655,13 @@ let newStatus = status;
   <div className="rm-glow w-72 h-72 top-8 left-1/2 -translate-x-1/2"></div>
  <div className="w-full max-w-xs space-y-3 text-center relative z-10">
  <h1 className="font-wordmark text-4xl text-white tracking-wide drop-shadow-[0_4px_14px_rgba(255,61,110,0.35)]">RIDERME</h1>
+ <div className="flex items-center justify-center gap-1">
+ <svg className="rm-bolt w-3 h-3.5 shrink-0" viewBox="0 0 24 24" fill="#FF3D6E"><polygon points="13,1 4,14 11,14 9,23 20,9 13,9" /></svg>
+ <div className="font-mono text-[#2FBF82] text-[9px] font-bold uppercase tracking-widest bg-white/10 py-0.5 px-2.5 rounded-full inline-block border border-[#2FBF82]/30">
+ you don't have to be a rockstar to have a rider
+ </div>
+ <svg className="rm-bolt rm-bolt-2 w-3 h-3.5 shrink-0" viewBox="0 0 24 24" fill="#FF3D6E"><polygon points="13,1 4,14 11,14 9,23 20,9 13,9" /></svg>
+ </div>
  <div className="cartoon-card p-4 bg-[#FAF7F2] space-y-2.5 text-left">
  <div className="flex gap-1.5 mb-1">
  <button
@@ -1744,6 +1752,16 @@ let newStatus = status;
  </div>
  )}
  </div>
+
+ <div className="cartoon-card-sm p-3 bg-white/95 text-left space-y-1.5">
+ <div className="font-mono text-[9px] font-extrabold uppercase tracking-widest text-[#726C78]">About RiderMe</div>
+ <div className="text-[10px] text-[#4B4650] leading-relaxed space-y-1.5">
+ <p className="font-bold text-[#17151D]">Create, share, and receive riders. 📝</p>
+ <p>Put your non-negotiables in writing. &ldquo;I just need a few things&rdquo; hits different when it&rsquo;s official. Let friends, family, and even that one acquaintance know exactly what you need, ahead of time.</p>
+ <p>They holler back with what they can actually pull off (and let you down easy on the rest).</p>
+ <p>Keep your rider private, just for you, or share an editable version with people you trust. Either way, the encore is the same: a good time, with your needs met and zero surprises.</p>
+ </div>
+ </div>
  </div>
  </div>
  );
@@ -1806,7 +1824,7 @@ let newStatus = status;
  <button 
 onClick={() => setShowHamburgerMenu(true)} 
 className="cartoon-btn bg-[#FF3D6E] text-white px-3 py-1 text-xs font-mono font-extrabold uppercase flex items-center gap-1 shadow-[0_3px_10px_-2px_rgba(0,0,0,0.4)]"
- title="Settings & Profile"
+ title="Menu"
  >
  <span>Menu</span>
  </button>
@@ -1954,10 +1972,27 @@ className="cartoon-btn bg-[#FF3D6E] text-white px-3 py-1 text-xs font-mono font-
  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-50 px-3 pt-10 pb-10 overflow-y-auto" onClick={closeSettingsMenu}>
  <div className="cartoon-card p-4 w-full max-w-xs bg-[#FAF7F2] space-y-3 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
  <div className="flex items-center justify-between border-b border-[#17151D]/18 pb-2">
- <div className="font-display text-sm text-[#17151D]">Settings & Profile</div>
+ <div className="font-display text-sm text-[#17151D]">Menu</div>
  <button onClick={closeSettingsMenu} className="cartoon-btn bg-white px-2 py-0.5 text-[9px]">✕</button>
  </div>
 
+ <div className="flex gap-1.5">
+ <button
+ onClick={() => setMenuTab("settings")}
+ className={`flex-1 py-1.5 rounded-lg font-mono text-[10px] uppercase font-extrabold transition ${menuTab === "settings" ? "bg-[#FF3D6E] text-white" : "bg-black/5 text-[#726C78]"}`}
+ >
+ Settings & Profile
+ </button>
+ <button
+ onClick={() => setMenuTab("about")}
+ className={`flex-1 py-1.5 rounded-lg font-mono text-[10px] uppercase font-extrabold transition ${menuTab === "about" ? "bg-[#FF3D6E] text-white" : "bg-black/5 text-[#726C78]"}`}
+ >
+ About
+ </button>
+ </div>
+
+ {menuTab === "settings" && (
+ <React.Fragment>
  <div className="space-y-1.5">
  <label className="font-mono text-[9px] font-bold text-[#17151D] uppercase block">Your Display Name</label>
  <input
@@ -2022,6 +2057,17 @@ className="cartoon-btn bg-[#FF3D6E] text-white px-3 py-1 text-xs font-mono font-
  </div>
  )}
  </div>
+ </React.Fragment>
+ )}
+
+ {menuTab === "about" && (
+ <div className="cartoon-card-sm p-3 bg-white text-[10px] text-[#4B4650] leading-relaxed space-y-1.5">
+ <p className="font-bold text-[#17151D]">Create, share, and receive riders. 📝</p>
+ <p>Put your non-negotiables in writing. &ldquo;I just need a few things&rdquo; hits different when it&rsquo;s official. Let friends, family, and even that one acquaintance know exactly what you need, ahead of time.</p>
+ <p>They holler back with what they can actually pull off (and let you down easy on the rest).</p>
+ <p>Keep your rider private, just for you, or share an editable version with people you trust. Either way, the encore is the same: a good time, with your needs met and zero surprises.</p>
+ </div>
+ )}
  </div>
  </div>
  )}
