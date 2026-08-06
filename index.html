@@ -799,6 +799,7 @@ localStorage.setItem(storageKey, typeof value === 'string' ? value : JSON.string
  const [authLoading, setAuthLoading] = useState(false);
 
  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
+ const [debugBannerDismissed, setDebugBannerDismissed] = useState(false);
  const [recoveryNewPassword, setRecoveryNewPassword] = useState("");
  const [recoveryNewPasswordConfirm, setRecoveryNewPasswordConfirm] = useState("");
  const [recoveryError, setRecoveryError] = useState("");
@@ -1713,6 +1714,22 @@ let newStatus = status;
  const sItems = (shared.items || []).map(i => ({ ...i, source: 'shared' }));
  const pItems = (personal.items || []).map(i => ({ ...i, source: 'personal' }));
  return [...sItems, ...pItems].filter(i => !!i.date);
+ }
+
+ if ((window.__preservedAuthHash || window.__preservedAuthSearch) && !debugBannerDismissed) {
+ return (
+ <div style={{ position: "fixed", inset: 0, background: "#000", color: "#0f0", fontFamily: "monospace", fontSize: "11px", padding: "16px", zIndex: 99999, overflowWrap: "break-word", overflowY: "auto" }}>
+ <div style={{ color: "#fff", fontWeight: "bold", marginBottom: "10px" }}>DEBUG — captured on page load:</div>
+ <div style={{ marginBottom: "10px" }}>hash: {JSON.stringify(window.__preservedAuthHash)}</div>
+ <div style={{ marginBottom: "16px" }}>search: {JSON.stringify(window.__preservedAuthSearch)}</div>
+ <button
+ onClick={() => setDebugBannerDismissed(true)}
+ style={{ background: "#0f0", color: "#000", padding: "8px 14px", fontWeight: "bold", border: "none" }}
+ >
+ Continue to app
+ </button>
+ </div>
+ );
  }
 
  if (loading || authSession === undefined) {
