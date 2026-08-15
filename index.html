@@ -4,6 +4,12 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
  <title>RiderMe</title>
+ <!-- Loaded here via <link> rather than a CSS @import inside the JS bundle,
+ so the browser can start fetching fonts immediately in parallel with the
+ JS download instead of waiting for JS to load and execute first. -->
+ <link rel="preconnect" href="https://fonts.googleapis.com">
+ <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+ <link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
  <!-- Must run before ANYTHING else, including Google Analytics below — gtag.js
  auto-strips OAuth-style #access_token= fragments from the URL as a privacy
  safeguard, which was silently eating Supabase's password-recovery tokens. -->
@@ -20,8 +26,8 @@
 
  gtag('config', 'G-WZV5W47DWR');
  </script>
-  <script type="module" crossorigin src="/assets/index-B0hMebxD.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-D9cHyqCU.css">
+  <script type="module" crossorigin src="/assets/index-C4r-V4JH.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-Do18Goba.css">
 </head>
 <body class="bg-[#0A090F] text-[#17151D] font-body selection:bg-[#FF3D6E] selection:text-white">
  <div id="root"></div>
