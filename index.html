@@ -4,20 +4,98 @@
  <meta charset="UTF-8">
  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
  <title>RiderMe</title>
+
+ <!-- Content Security Policy.
+      Added after the August 2026 review. The app has exactly one hand-rolled
+      HTML sink (the Leaflet popup and marker HTML in MapView.jsx), and its only
+      protection is a local escapeHtml. That function is correct today — every
+      interpolation was checked — but a CSP is the backstop for the day someone
+      adds a slot and forgets it, and there was none.
+
+      Notes on the specific allowances, so nobody widens them by guesswork:
+      - 'unsafe-inline' in script-src is required by the two inline blocks below
+        (the URL snapshot and the gtag bootstrap). Removing it means giving both
+        a nonce at build time, which Vite can do; worth it later.
+      - blob: in worker-src is Vite/Leaflet; data: in img-src is how the app
+        embeds small glyphs.
+      - connect-src lists the Supabase project, Google Analytics, and Nominatim.
+        It used to also list corsproxy.io and api.allorigins.win; build 184
+        removed those from MapView (they were being handed other people's rider
+        contents, and their responses decided where pins landed), so they came
+        out of here too. This list should keep shrinking, not grow — anything
+        added to it is a new third party learning what people are planning.
+      - There is deliberately NO frame-ancestors here, and no X-Frame-Options
+        meta. Both are IGNORED when delivered via <meta> — the spec only honours
+        frame-ancestors, report-uri and sandbox from a real HTTP header, and
+        X-Frame-Options has never worked as a meta tag at all. Putting them here
+        would look like clickjacking protection while providing none, which is
+        worse than none. They have to be set as response headers by whatever
+        serves the built files; see the note under the policy. -->
+ <meta http-equiv="Content-Security-Policy" content="
+   default-src 'self';
+   script-src 'self' 'unsafe-inline' https://www.googletagmanager.com;
+   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+   font-src 'self' https://fonts.gstatic.com;
+   img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com;
+   connect-src 'self' https://qajimmgjxgnvcidinimg.supabase.co wss://qajimmgjxgnvcidinimg.supabase.co
+     https://www.google-analytics.com https://region1.google-analytics.com
+     https://nominatim.openstreetmap.org;
+   worker-src 'self' blob:;
+   object-src 'none';
+   base-uri 'self';
+   form-action 'self';
+ ">
+ <!-- STILL TO DO, and it cannot be done from this file: set these as real
+      response headers on the host (Netlify _headers, Vercel headers, nginx
+      add_header — wherever the built files are served from).
+
+        Content-Security-Policy: frame-ancestors 'none'
+        X-Frame-Options: DENY
+        Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+      Nothing in this app is meant to be embedded, and clickjacking a rider's
+      "delete for everyone" button is a cheap attack to remove — but a meta tag
+      cannot do it. -->
+ <meta name="referrer" content="strict-origin-when-cross-origin">
+
  <!-- Loaded here via <link> rather than a CSS @import inside the JS bundle,
  so the browser can start fetching fonts immediately in parallel with the
  JS download instead of waiting for JS to load and execute first. -->
  <link rel="preconnect" href="https://fonts.googleapis.com">
  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
  <link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400;500;600;700;800;900&family=Saira:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
  <!-- Must run before ANYTHING else, including Google Analytics below — gtag.js
  auto-strips OAuth-style #access_token= fragments from the URL as a privacy
- safeguard, which was silently eating Supabase's password-recovery tokens. -->
+ safeguard, which was silently eating Supabase's password-recovery tokens.
+ App.jsx deletes both globals as soon as it has copied them, because on a
+ recovery landing __preservedAuthHash contains an access AND refresh token and
+ gtag.js runs in this same origin. -->
  <script>
  window.__preservedAuthHash = window.location.hash || "";
  window.__preservedAuthSearch = window.location.search || "";
  </script>
- <!-- Google tag (gtag.js) -->
+
+ <!-- Google tag (gtag.js).
+      gtag('config') sends page_location INCLUDING the query string, and a
+      Supabase PKCE recovery link arrives as ?code=<token>. So this does hand a
+      recovery code to Google Analytics, and an abandoned recovery leaves it in
+      browser history.
+
+      WHY THAT IS NOT FIXED BY SCRUBBING THE URL HERE — tried, reverted, do not
+      re-add it. supabase-js is created with detectSessionInUrl at its default
+      (true) and this app never calls exchangeCodeForSession or passes the token
+      in by hand: the ONLY thing that turns a recovery link into a session is
+      supabase-js reading it off window.location when createClient runs, in the
+      bundle, after this. Stripping the URL here would silently break password
+      recovery altogether — a worse bug than the one being fixed.
+
+      App.jsx scrubs it instead, immediately AFTER getSession() has resolved and
+      the token has been consumed. That leaves a genuine gap: gtag can fire its
+      page_view before that point. Closing it properly means either loading gtag
+      lazily once the app knows it is not on a recovery landing, or handling the
+      token explicitly (exchangeCodeForSession) so the app controls the ordering
+      rather than racing it. Recorded rather than papered over. -->
  <script async src="https://www.googletagmanager.com/gtag/js?id=G-WZV5W47DWR"></script>
  <script>
  window.dataLayer = window.dataLayer || [];
@@ -26,8 +104,8 @@
 
  gtag('config', 'G-WZV5W47DWR');
  </script>
-  <script type="module" crossorigin src="/assets/index-CzcWhJvX.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-DiB-l8Dt.css">
+  <script type="module" crossorigin src="/assets/index-CTzpM5Lx.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-Dq-6U9KM.css">
 </head>
 <body class="bg-[#0A090F] text-[#17151D] font-body selection:bg-[#FF3D6E] selection:text-white">
  <div id="root"></div>
