@@ -13,9 +13,10 @@
       adds a slot and forgets it, and there was none.
 
       Notes on the specific allowances, so nobody widens them by guesswork:
-      - 'unsafe-inline' in script-src is required by the two inline blocks below
-        (the URL snapshot and the gtag bootstrap). Removing it means giving both
-        a nonce at build time, which Vite can do; worth it later.
+      - script-src no longer allows 'unsafe-inline'. Each inline block below is
+        authorised by its sha256 instead; see the note on the policy itself.
+        (A nonce was the plan here, and it is the wrong tool for a static site —
+        it would be a public constant in HTML everyone downloads.)
       - blob: in worker-src is Vite/Leaflet; data: in img-src is how the app
         embeds small glyphs.
       - connect-src lists the Supabase project, Google Analytics, and Nominatim.
@@ -31,9 +32,34 @@
         would look like clickjacking protection while providing none, which is
         worse than none. They have to be set as response headers by whatever
         serves the built files; see the note under the policy. -->
+ <!-- script-src carries HASHES, not 'unsafe-inline' and not a nonce.
+      A nonce is worthless here: this is a static site on GitHub Pages, so the
+      same HTML is served to everyone and the nonce would be a public constant —
+      an attacker who can inject markup can simply read it out of the page and
+      use it. Hashes have no such problem; they commit to the exact bytes of each
+      inline script, so injected script cannot match one.
+
+      The cost is that EDITING ANY INLINE SCRIPT ABOVE BREAKS THE PAGE until its
+      hash is updated — silently, because the browser just refuses to run it.
+      tests/check-csp-hashes.mjs recomputes all three from this file and fails if
+      they drift, which is the only reason this is safe to maintain by hand.
+
+      Recompute with:
+        node tests/check-csp-hashes.mjs --print
+
+      (That used to be an inline one-liner here. It quoted a script tag, which
+      the hash extractor then counted as a fourth inline script and demanded a
+      hash for — so the documentation for the check broke the check.)
+
+      'unsafe-inline' stays in style-src: React sets inline styles on almost
+      every element and Tailwind emits them too, so hashing is not possible
+      there. Injected CSS is a far smaller problem than injected script. -->
  <meta http-equiv="Content-Security-Policy" content="
    default-src 'self';
-   script-src 'self' 'unsafe-inline' https://www.googletagmanager.com;
+   script-src 'self' https://www.googletagmanager.com
+     'sha256-IkVDNOE/XBDp73OTr04nobvtqhgrHMRk1+vyDxub4jM='
+     'sha256-byTNv+zTnNKYLMFVjSKv3ZJtRFl2ukUxXHZHw03fSZg='
+     'sha256-zKDZRxzYF0XrOMG4LKkA5IYnZgCVxMHznUdQB9EG5IU=';
    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
    font-src 'self' https://fonts.gstatic.com;
    img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com;
@@ -45,17 +71,29 @@
    base-uri 'self';
    form-action 'self';
  ">
- <!-- STILL TO DO, and it cannot be done from this file: set these as real
-      response headers on the host (Netlify _headers, Vercel headers, nginx
-      add_header — wherever the built files are served from).
+ <!-- STILL TO DO, and it cannot be done from this file OR from this host:
 
         Content-Security-Policy: frame-ancestors 'none'
         X-Frame-Options: DENY
         Strict-Transport-Security: max-age=31536000; includeSubDomains
 
-      Nothing in this app is meant to be embedded, and clickjacking a rider's
-      "delete for everyone" button is a cheap attack to remove — but a meta tag
-      cannot do it. -->
+      A <meta> tag cannot deliver any of the three, and GITHUB PAGES CANNOT SET
+      RESPONSE HEADERS AT ALL — no config file, no setting. So unlike the rest of
+      this policy, these are not a matter of adding a line somewhere.
+
+      What is covering the gap today: the script above breaks the page out of a
+      frame, which handles the clickjacking half well enough for an app that is
+      entirely JavaScript. NOTHING covers HSTS — "Enforce HTTPS" in the GitHub
+      Pages settings redirects http to https, which leaves a user's very first
+      visit on a hostile network exposed, and no amount of page content can fix
+      that.
+
+      The real fix, recorded in the project notes as Option A: put Cloudflare in
+      front of GitHub Pages (free, DNS-only change, the build is untouched).
+      HSTS is then a toggle under SSL/TLS -> Edge Certificates, and the two frame
+      headers are a Response Header Transform Rule. Moving the site to Cloudflare
+      Pages, Netlify or Vercel would also work and allows a headers file in the
+      repo. -->
  <meta name="referrer" content="strict-origin-when-cross-origin">
 
  <!-- Loaded here via <link> rather than a CSS @import inside the JS bundle,
@@ -65,12 +103,41 @@
  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
  <link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400;500;600;700;800;900&family=Saira:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
- <!-- Must run before ANYTHING else, including Google Analytics below — gtag.js
- auto-strips OAuth-style #access_token= fragments from the URL as a privacy
- safeguard, which was silently eating Supabase's password-recovery tokens.
- App.jsx deletes both globals as soon as it has copied them, because on a
- recovery landing __preservedAuthHash contains an access AND refresh token and
- gtag.js runs in this same origin. -->
+ <!-- CLICKJACKING. This is JavaScript because it cannot be a header.
+      GitHub Pages does not support custom response headers at all — no config
+      file, no setting — so `X-Frame-Options: DENY` and CSP `frame-ancestors`
+      are unavailable, and neither works from a <meta> tag. Confirmed against
+      GitHub's own community discussions, Aug 2026.
+
+      HIDE FIRST, THEN ESCAPE, in that order. Navigating the top window can be
+      blocked (a sandboxed frame without allow-top-navigation, or no user
+      activation), and if the escape fails silently while the page is still
+      visible, the overlay attack works exactly as intended. Hiding first means
+      the worst case is a blank frame rather than a working decoy.
+
+      An attacker can defeat this with `sandbox` minus allow-scripts — but that
+      also stops React, so there is nothing rendered to trick anyone into
+      clicking. For an app that is entirely script, that trade is fine.
+
+      NOT a substitute for the real header. See Option A in the project notes:
+      putting Cloudflare in front of GitHub Pages allows real headers plus HSTS,
+      which cannot be emulated from here at all. -->
+ <script>
+ if (window.top !== window.self) {
+ document.documentElement.style.display = "none";
+ try { window.top.location = window.self.location; } catch (e) {}
+ }
+ </script>
+
+ <!-- Must run before Google Analytics below — gtag.js auto-strips OAuth-style
+ #access_token= fragments from the URL as a privacy safeguard, which was
+ silently eating Supabase's password-recovery tokens. App.jsx deletes both
+ globals as soon as it has copied them, because on a recovery landing
+ __preservedAuthHash contains an access AND refresh token and gtag.js runs in
+ this same origin.
+
+ The frame guard above it is the only thing that may run earlier, and it does
+ not touch the URL. -->
  <script>
  window.__preservedAuthHash = window.location.hash || "";
  window.__preservedAuthSearch = window.location.search || "";
@@ -91,21 +158,35 @@
       recovery altogether — a worse bug than the one being fixed.
 
       App.jsx scrubs it instead, immediately AFTER getSession() has resolved and
-      the token has been consumed. That leaves a genuine gap: gtag can fire its
-      page_view before that point. Closing it properly means either loading gtag
-      lazily once the app knows it is not on a recovery landing, or handling the
-      token explicitly (exchangeCodeForSession) so the app controls the ordering
-      rather than racing it. Recorded rather than papered over. -->
+      the token has been consumed. That leaves a gap: gtag can fire its page_view
+      before that point.
+
+      CLOSED, Aug 2026, WITHOUT touching the URL: gtag is told explicitly what to
+      report. `page_location` is passed as origin + pathname, so the query string
+      never reaches Analytics no matter when the tag fires. window.location is
+      left exactly as it was, so supabase-js still finds the recovery token where
+      it expects it — which is why this works where scrubbing did not.
+
+      Two different secrets were going to Google here, not one:
+        * ?code=<PKCE token> on a password-recovery landing
+        * ?code=<RIDER CODE> on a share link — and a rider code is a credential.
+          Anyone reading the Analytics reports could join those riders.
+
+      The referrer is dropped for the same reason: an in-app navigation would
+      otherwise carry the previous URL's query string along with it. -->
  <script async src="https://www.googletagmanager.com/gtag/js?id=G-WZV5W47DWR"></script>
  <script>
  window.dataLayer = window.dataLayer || [];
  function gtag(){dataLayer.push(arguments);}
  gtag('js', new Date());
 
- gtag('config', 'G-WZV5W47DWR');
+ gtag('config', 'G-WZV5W47DWR', {
+ page_location: window.location.origin + window.location.pathname,
+ page_referrer: ""
+ });
  </script>
-  <script type="module" crossorigin src="/assets/index-BC0iFFp2.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-Dq-6U9KM.css">
+  <script type="module" crossorigin src="/assets/index-BYeZ858u.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-r0DJ8K4W.css">
 </head>
 <body class="bg-[#0A090F] text-[#17151D] font-body selection:bg-[#FF3D6E] selection:text-white">
  <div id="root"></div>
