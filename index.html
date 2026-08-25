@@ -5,6 +5,21 @@
  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
  <title>RiderMe</title>
 
+ <!-- PWA — build 279. Installable ("Add to Home Screen") and the prerequisite
+      for Web Push. The service worker is registered from src/main.jsx (a module,
+      already allowed by script-src 'self'), NOT an inline script — so none of
+      the CSP script hashes above change. manifest-src falls back to default-src
+      'self'. On iOS, Web Push works only for the installed home-screen app
+      (16.4+), which is exactly what these tags enable. -->
+ <link rel="manifest" href="/manifest.webmanifest">
+ <meta name="theme-color" content="#0A090F">
+ <meta name="apple-mobile-web-app-capable" content="yes">
+ <meta name="mobile-web-app-capable" content="yes">
+ <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+ <meta name="apple-mobile-web-app-title" content="RiderMe">
+ <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+ <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+
  <!-- Content Security Policy.
       Added after the August 2026 review. The app has exactly one hand-rolled
       HTML sink (the Leaflet popup and marker HTML in MapView.jsx), and its only
@@ -186,8 +201,8 @@
  page_referrer: ""
  });
  </script>
-  <script type="module" crossorigin src="/assets/index-B6rVqaG4.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-C0ficaN4.css">
+  <script type="module" crossorigin src="/assets/index-CgRLv8zo.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-01jE4hEP.css">
 </head>
 <body class="bg-[#0A090F] text-[#17151D] font-body selection:bg-[#FF3D6E] selection:text-white">
  <div id="root"></div>
