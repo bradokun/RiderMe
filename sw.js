@@ -71,9 +71,39 @@ self.addEventListener('push', (e) => {
   e.waitUntil(self.registration.showNotification(title, options));
 });
 
+/* A NOTIFICATION MAY ONLY OPEN THIS APP — build 414.
+ *
+ * `url` arrives in the push payload and went straight into c.navigate() and
+ * clients.openWindow(). Nothing checked where it pointed, so a payload carrying
+ * an absolute off-origin URL would open that site from a tap on a RiderMe
+ * notification — the app's own branding as the pretext, which is most of what
+ * makes a phishing link work.
+ *
+ * NOT REACHABLE WHEN THIS WAS WRITTEN: both senders (push-on-notification and
+ * send-reminders) hardcode url: "/". It is fixed anyway because the comment on
+ * the push handler above advertises `{ title, body, url, tag }` as the contract,
+ * so the first sender to put a deep link there inherits the gap — and it will be
+ * written by someone adding a feature, not by someone auditing this file.
+ *
+ * RESOLVED, NOT PATTERN-MATCHED. `new URL(raw, origin)` resolves relatives
+ * against this origin, so "/?join=CODE" keeps working and future deep links need
+ * no further change here; only the resolved ORIGIN is compared. A string test
+ * (startsWith("/"), or a regex) is the version that gets bypassed: "//evil.example"
+ * starts with a slash and is protocol-relative, and "/\evil.example" is treated
+ * as a host by some parsers. Resolving first removes the whole class.
+ *
+ * Anything that fails to parse, or resolves elsewhere, falls back to "/" — the
+ * app still opens, which is what a person tapping a notification asked for. */
+function sameOriginPath(raw) {
+  try {
+    const u = new URL(String(raw == null ? '/' : raw), self.location.origin);
+    return u.origin === self.location.origin ? u.href : '/';
+  } catch { return '/'; }
+}
+
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || '/';
+  const url = sameOriginPath(e.notification.data && e.notification.data.url);
   e.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const c of all) {
