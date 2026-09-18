@@ -153,17 +153,47 @@
  this same origin.
 
  The frame guard above it is the only thing that may run earlier, and it does
- not touch the URL. -->
+ not touch the URL.
+
+ WHICH FLOW IS ACTUALLY IN USE — corrected at 608, because this file used to
+ claim the other one. `createClient` is called with NO options (src/App.jsx,
+ the ADMINISTRATOR CLOUD CONFIGURATION block), so every auth option is the
+ supabase-js default. Read out of the installed @supabase/supabase-js 2.112.4
+ rather than assumed:
+
+ autoRefreshToken: true  persistSession: true
+ detectSessionInUrl: true  flowType: 'implicit'
+ STORAGE_KEY = 'supabase.auth.token'   -> localStorage
+
+ So this is the IMPLICIT flow: a recovery link arrives as a URL FRAGMENT
+ carrying an access token AND a refresh token — which is exactly why the
+ delete in App.jsx matters, and why it was moved to the first line of that
+ effect at 608 (it used to sit after an early return that skipped it).
+
+ App.jsx handles the `?code=` shape too, so a switch to PKCE would not break
+ the app — but it is NOT configured, and PKCE was considered and deliberately
+ not taken at 608: it changes password recovery, which cannot be verified
+ without sending a real reset email and clicking it on a device. Recorded in
+ claude/riderme-security-review-608.md. **If that decision is ever revisited,
+ correct this block in the same commit** — a comment describing a flow the
+ client does not use is how the last reader was misled. -->
  <script>
  window.__preservedAuthHash = window.location.hash || "";
  window.__preservedAuthSearch = window.location.search || "";
  </script>
 
  <!-- Google tag (gtag.js).
-      gtag('config') sends page_location INCLUDING the query string, and a
-      Supabase PKCE recovery link arrives as ?code=<token>. So this does hand a
-      recovery code to Google Analytics, and an abandoned recovery leaves it in
-      browser history.
+      gtag('config') sends page_location INCLUDING the query string. So by
+      default this hands whatever is in the query string to Google Analytics,
+      and an abandoned landing leaves it in browser history.
+
+      CORRECTED AT 608: this block used to say "a Supabase PKCE recovery link
+      arrives as ?code=<token>", which described a flow this client is not
+      configured for — flowType is the supabase-js default, `implicit`, so a
+      recovery token arrives in the URL FRAGMENT and a fragment is never sent
+      to a server at all. The fix below was therefore protecting against the
+      wrong one of the two secrets. It protects against BOTH, which is why the
+      error did no harm — but see the list further down for which is real.
 
       WHY THAT IS NOT FIXED BY SCRUBBING THE URL HERE — tried, reverted, do not
       re-add it. supabase-js is created with detectSessionInUrl at its default
@@ -183,10 +213,15 @@
       left exactly as it was, so supabase-js still finds the recovery token where
       it expects it — which is why this works where scrubbing did not.
 
-      Two different secrets were going to Google here, not one:
-        * ?code=<PKCE token> on a password-recovery landing
-        * ?code=<RIDER CODE> on a share link — and a rider code is a credential.
-          Anyone reading the Analytics reports could join those riders.
+      What was going to Google here, restated accurately at 608:
+        * ?join=<RIDER CODE> on a share link — REAL, and the reason this fix
+          matters. A rider code is a bearer credential; anyone reading the
+          Analytics reports could join those riders.
+        * a recovery token — NOT via the query string, on this configuration.
+          Implicit flow puts it in the fragment, which browsers never send.
+          It WOULD become real the day anyone sets flowType: 'pkce', and the
+          fix below already covers that case, so the switch is safe from this
+          angle. Left in place for exactly that reason.
 
       The referrer is dropped for the same reason: an in-app navigation would
       otherwise carry the previous URL's query string along with it. -->
@@ -201,7 +236,7 @@
  page_referrer: ""
  });
  </script>
-  <script type="module" crossorigin src="/assets/index-Dt6zVQAg.js"></script>
+  <script type="module" crossorigin src="/assets/index-CSc0yKxa.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-FL83uQrl.css">
 </head>
 <body class="bg-[#0A090F] text-[#17151D] font-body selection:bg-[#FF3D6E] selection:text-white">
