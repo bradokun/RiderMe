@@ -10,9 +10,67 @@
  * Cross-origin requests (Supabase, analytics, fonts, map tiles) are never
  * touched — the app must always hit the network for those.
  */
-const SHELL = 'riderme-shell-v1';
+const SHELL = 'riderme-shell-v2';
 
-self.addEventListener('install', () => self.skipWaiting());
+/* PRECACHE ON INSTALL — build 610.
+ *
+ * The header above used to say "No precache manifest — Vite hashes asset filenames, so runtime
+ * caching is safe and needs no build integration." Runtime caching IS safe. It is not sufficient,
+ * and the gap was measured rather than argued — real build, real worker, browser HTTP cache
+ * disabled so nothing could cheat:
+ *
+ *     after 1st visit:  {}                               <- nothing cached at all
+ *     after 2nd visit:  ["/", index-*.css, index-*.js]   <- three entries
+ *
+ * TWO HOLES. The first visit caches NOTHING, because the navigation that loads the page happens
+ * before this worker controls it — so install the app, lose signal, get nothing. And only what has
+ * been fetched is ever there: MapView and QrCode are React.lazy dynamic imports, so the map and the
+ * QR code were dead offline until you had opened each of them online at least once.
+ *
+ * A dynamic import cannot be found by parsing index.html — it is referenced from inside the main
+ * bundle — so the list has to come from the build. vite.config.js writes /precache.json.
+ *
+ * ONE REQUEST AT A TIME, NOT cache.addAll. addAll is atomic: one 404 and the whole install fails,
+ * which would leave a worker that never activates and an app with no offline story at all. Each
+ * entry is allowed to fail on its own and the rest still land.
+ *
+ * AND A FAILED PRECACHE MUST NOT FAIL THE INSTALL. If the manifest itself cannot be fetched — the
+ * very first load is offline, or the deploy is mid-flight — this resolves anyway and the old
+ * runtime caching still works. An install that rejects leaves the previous worker in charge, which
+ * on a first visit means no worker at all.
+ *
+ * `cache: 'no-store'` on the manifest: a stale manifest would precache the PREVIOUS deploy's
+ * hashed filenames, which are exactly the files that no longer exist.
+ */
+self.addEventListener('install', (e) => {
+  e.waitUntil((async () => {
+    try {
+      const res = await fetch('/precache.json', { cache: 'no-store' });
+      if (res && res.ok) {
+        const { shell } = await res.json();
+        const cache = await caches.open(SHELL);
+        await Promise.all((shell || []).map(async (url) => {
+          try {
+            // HASHED ASSETS COME FROM THE HTTP CACHE; EVERYTHING ELSE IS REFETCHED.
+            //
+            // The first version passed `cache: 'no-store'` to every entry, which made install
+            // download the whole app a SECOND time — the browser had just fetched the main bundle
+            // to render the page, and this threw that away and asked for it again. On a phone on
+            // mobile data that is the worst possible moment to double the payload.
+            //
+            // Under /assets/ the filename carries a content hash, so a cached copy cannot be the
+            // wrong one — the default policy is safe and free. `/` and the manifest are NOT hashed,
+            // so a stale copy is possible and those are still refetched.
+            const hashed = url.startsWith('/assets/');
+            const r = await fetch(url, hashed ? undefined : { cache: 'reload' });
+            if (r && r.ok) await cache.put(url, r);
+          } catch { /* one asset missing must not cost the others */ }
+        }));
+      }
+    } catch { /* offline on first load — runtime caching still fills in later */ }
+    await self.skipWaiting();
+  })());
+});
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
     const keys = await caches.keys();

@@ -76,8 +76,8 @@
      'sha256-IkVDNOE/XBDp73OTr04nobvtqhgrHMRk1+vyDxub4jM='
      'sha256-byTNv+zTnNKYLMFVjSKv3ZJtRFl2ukUxXHZHw03fSZg='
      'sha256-zKDZRxzYF0XrOMG4LKkA5IYnZgCVxMHznUdQB9EG5IU=';
-   style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-   font-src 'self' https://fonts.gstatic.com;
+   style-src 'self' 'unsafe-inline';
+   font-src 'self';
    img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com;
    connect-src 'self' https://qajimmgjxgnvcidinimg.supabase.co wss://qajimmgjxgnvcidinimg.supabase.co
      https://www.google-analytics.com https://region1.google-analytics.com
@@ -112,12 +112,22 @@
       repo. -->
  <meta name="referrer" content="strict-origin-when-cross-origin">
 
- <!-- Loaded here via <link> rather than a CSS @import inside the JS bundle,
- so the browser can start fetching fonts immediately in parallel with the
- JS download instead of waiting for JS to load and execute first. -->
- <link rel="preconnect" href="https://fonts.googleapis.com">
- <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
- <link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@400;500;600;700;800;900&family=Saira:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+ <!-- THE FONTS MOVED INTO THE BUNDLE — build 611.
+      Three tags used to sit here: two preconnects and a stylesheet from
+      fonts.googleapis.com. They are gone because sw.js deliberately never
+      touches cross-origin requests, so with no network the app fell back to
+      the system sans-serif and stopped looking like itself. 610 made the shell
+      work offline; this is what makes it look right when it does.
+
+      They are now `import '@fontsource/saira/...'` in src/main.jsx — Vite
+      inlines the @font-face rules into the CSS bundle and emits the woff2
+      files as hashed assets, which 610's precache manifest then picks up
+      automatically because it lists every emitted asset rather than a
+      hand-written set.
+
+      This also removed two third parties from the page: fonts.googleapis.com
+      and fonts.gstatic.com are no longer contacted at all, which is why
+      style-src and font-src below no longer name them. -->
 
  <!-- CLICKJACKING. This is JavaScript because it cannot be a header.
       GitHub Pages does not support custom response headers at all — no config
@@ -236,8 +246,8 @@
  page_referrer: ""
  });
  </script>
-  <script type="module" crossorigin src="/assets/index-CSc0yKxa.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-FL83uQrl.css">
+  <script type="module" crossorigin src="/assets/index-BhxjKCZY.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DN88lUhB.css">
 </head>
 <body class="bg-[#0A090F] text-[#17151D] font-body selection:bg-[#FF3D6E] selection:text-white">
  <div id="root"></div>
