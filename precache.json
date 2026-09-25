@@ -1,11 +1,12 @@
 {
  "shell": [
   "/",
-  "/assets/MapView-C3ywindp.js",
+  "/apple-touch-icon.png",
+  "/assets/MapView-CRO1k_4v.js",
   "/assets/MapView-Dgihpmma.css",
-  "/assets/QrCode-Dp8Cdmzt.js",
-  "/assets/index-BhxjKCZY.js",
-  "/assets/index-DN88lUhB.css",
+  "/assets/QrCode-BsDTVAC_.js",
+  "/assets/index-BcEcIgOO.js",
+  "/assets/index-Dza-_P3H.css",
   "/assets/saira-condensed-latin-400-normal-BrqFk_DA.woff2",
   "/assets/saira-condensed-latin-500-normal-DIdKjHXc.woff2",
   "/assets/saira-condensed-latin-600-normal-0taFJMb7.woff2",
@@ -17,6 +18,11 @@
   "/assets/saira-latin-600-normal-DYxBFP1f.woff2",
   "/assets/saira-latin-700-normal-CObqxJsW.woff2",
   "/assets/saira-latin-800-normal-Bc4BtNlT.woff2",
-  "/manifest.webmanifest"
+  "/help.html",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/manifest.webmanifest",
+  "/saira-condensed-latin-800.woff2"
  ]
 }

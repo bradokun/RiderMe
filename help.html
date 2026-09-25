@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RiderMe help</title>
+<meta name="description" content="Answers to the things people ask most about RiderMe — riders, lists, offline changes, costs, passes and accounts.">
+<!--
+  BUILD 624 — THE HELP PAGE.
+
+  A STANDALONE FILE, like delete-account.html and privacy.html, and for the same three reasons:
+  there is no router and no 404.html, so only a real FILE resolves on GitHub Pages; nothing here
+  loads from the bundle, whose filenames are hashed and change every build; and it has to still
+  render after a rewrite of the app.
+
+  AND NO JAVASCRIPT. The accordion is <details>/<summary>, which needs no script, is announced
+  correctly by screen readers without any ARIA of its own, and — the reason that decided it — is
+  searchable: "find in page" opens a closed <details> and jumps to the match in every current
+  browser. A scripted accordion would have needed a CSP relaxation to buy a worse version of that.
+
+  THE LOOK IS "B3" from tests/mockup-help-look-2.mjs: a header pass, then one pass per section with
+  a coloured edge. Chosen by Bradley from a board of four, itself round two of a board of four.
+
+  WHY THE SECTIONS ARE IN THIS ORDER. Getting started leads and Offline sits third, which is the
+  reverse of the first draft. This page is the support link on both store listings, so a
+  prospective user taps it and reads the first thing on it; "your change didn't save" is not what
+  the app should say for itself. Reversible once there is evidence of what people actually ask.
+
+  COLOURS ARE THE APP'S OWN, per scheme. The bright DARK_TINT marks glow on the dark ground and
+  measure 1.3-2.4:1 on the light one, so the light scheme uses LIGHT_INK — the values
+  sharedHelpers.jsx already solved for exactly this. tests/check-help-page.mjs measures every one.
+
+  THE FONT IS SERVED FROM /fonts/, NOT FROM THE BUNDLE. The bundle's copy is content-hashed and its
+  name changes every build, so a standalone page cannot link it. 18 KB, display weight only; body
+  text is the system stack.
+
+  THIS PAGE IS PRECACHED, and it is the only one of the three standalone pages that is. Its
+  Offline & syncing section is the thing somebody needs exactly when they have no network, and a
+  help page that is unreachable without a connection cannot answer "am I offline?". See
+  vite.config.js.
+-->
+<style>
+ @font-face {
+  font-family: 'Saira Condensed';
+  font-weight: 800;
+  font-display: swap;
+  src: url('/saira-condensed-latin-800.woff2') format('woff2');
+ }
+ :root {
+  --bg: #0A090F; --surface: #141220; --ink: #F4F2F7; --muted: #A39FA8;
+  --rule: rgba(244,242,247,0.14); --accent: #FF3D6E; --edge: rgba(244,242,247,0.10);
+  /* DARK_TINT — the marks as the app draws them in dark. */
+  --c-start: #4FA8FF; --c-using: #BB8CFF; --c-notif: #2FBF82; --c-offline: #2DC7C0; --c-costs: #F5D94E; --c-access: #FF3D6E; --c-account: #A39FA8;
+  --shadow: 4px 5px 0 rgba(0,0,0,0.65);
+ }
+ @media (prefers-color-scheme: light) {
+  :root {
+   --bg: #FAF7F2; --surface: #FFFFFF; --ink: #17141F; --muted: #5C5766;
+   --rule: rgba(23,20,31,0.14); --accent: #D61A4C; --edge: rgba(23,20,31,0.12);
+   /* LIGHT_INK — the same marks re-solved for a pale ground, from sharedHelpers.jsx. */
+   --c-start: #1A66D6; --c-using: #7A3FE0; --c-notif: #0B7A4C; --c-offline: #077E90; --c-costs: #A76205; --c-access: #D61A4C; --c-account: #5C5766;
+   --shadow: 4px 5px 0 rgba(23,21,29,0.16);
+  }
+ }
+ * { box-sizing: border-box; }
+ html, body { margin: 0; padding: 0; background: var(--bg); }
+ body {
+  color: var(--ink);
+  font: 16px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  padding: 20px 16px 56px;
+ }
+ main { max-width: 620px; margin: 0 auto; }
+ .pass {
+  background: var(--surface); border: 1.5px solid var(--edge); border-radius: 16px;
+  box-shadow: var(--shadow); overflow: hidden; margin-bottom: 14px;
+ }
+ .edge { height: 7px; }
+ .grad { background: linear-gradient(to right, #FF3D6E, #F0559B, #2DC7C0); }
+ .pad { padding: 14px 15px 15px; }
+ h1 {
+  font-family: 'Saira Condensed', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 800; font-size: 32px; line-height: 1; text-transform: uppercase;
+  letter-spacing: 0.01em; margin: 0;
+ }
+ h2 {
+  font-family: 'Saira Condensed', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 800; font-size: 18px; line-height: 1.1; text-transform: uppercase;
+  letter-spacing: 0.04em; margin: 0 0 3px;
+ }
+ .lede { color: var(--muted); font-size: 13.5px; margin: 5px 0 0; }
+ details { border-top: 1px solid var(--rule); }
+ details:first-of-type { border-top: 0; }
+ summary {
+  list-style: none; cursor: pointer; padding: 11px 0 11px 23px; position: relative;
+  font-size: 15px; font-weight: 600; line-height: 1.38;
+ }
+ summary::-webkit-details-marker { display: none; }
+ /* The chevron is drawn with borders rather than an SVG or a glyph: no extra request, and it
+    rotates on [open] with no script. */
+ summary::before {
+  content: ''; position: absolute; left: 4px; top: 17px;
+  width: 6px; height: 6px; border-right: 2.2px solid currentColor; border-bottom: 2.2px solid currentColor;
+  transform: rotate(-45deg); transition: transform 0.15s ease;
+ }
+ details[open] > summary::before { transform: rotate(45deg); top: 16px; }
+ summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+ .a { color: var(--muted); font-size: 14px; line-height: 1.6; padding: 0 0 12px 23px; margin: 0; }
+ .a + .a { padding-top: 8px; }
+ .a strong { color: var(--ink); font-weight: 700; }
+ /* The one list on the page (Notifications). `.a` sets `padding` as a shorthand, which wipes
+    the UA's padding-inline-start — so a <ul class="a"> would hang its markers outside the
+    content box. The marker room is put back here rather than by loosening `.a`. */
+ ul.a { padding-left: 40px; }
+ ul.a li { padding-bottom: 3px; }
+ a { color: var(--accent); font-weight: 600; }
+ .s-start  summary::before, .s-start  h2 { color: var(--c-start); }
+ .s-using  summary::before, .s-using  h2 { color: var(--c-using); }
+ .s-notif  summary::before, .s-notif  h2 { color: var(--c-notif); }
+ .s-offline summary::before, .s-offline h2 { color: var(--c-offline); }
+ .s-costs  summary::before, .s-costs  h2 { color: var(--c-costs); }
+ .s-access summary::before, .s-access h2 { color: var(--c-access); }
+ .s-account summary::before, .s-account h2 { color: var(--c-account); }
+ .foot { color: var(--muted); font-size: 12.5px; text-align: center; margin-top: 18px; }
+</style>
+</head>
+<body>
+<main>
+
+<section class="pass">
+ <div class="edge grad"></div>
+ <div class="pad">
+  <h1>Help</h1>
+  <p class="lede">Answers to the things people ask most. Nothing here needs you to sign in.</p>
+ </div>
+</section>
+
+<section class="pass s-start">
+ <div class="edge" style="background: var(--c-start)"></div>
+ <div class="pad">
+  <h2>Getting started</h2>
+  <details>
+   <summary>What is a rider?</summary>
+   <p class="a">A rider is a shared list for a trip, a gig or an event — what needs bringing, who is
+   doing what, and what it all costs. The name comes from touring, where a rider is the list an
+   artist sends ahead. Make one, invite the people coming, and everyone sees the same list.</p>
+  </details>
+  <details>
+   <summary>What&rsquo;s the difference between the shared and private lists?</summary>
+   <p class="a">The shared list is the rider itself: everyone you have invited can see it and,
+   unless the rider is set to need approval, change it.</p>
+   <p class="a">The private list is yours alone. <strong>Nobody else can see it</strong> — not other
+   members, not the person who created the rider. Use it for the things only you have to remember.
+   You can move a private item onto the shared list later if you want to.</p>
+  </details>
+  <details>
+   <summary>How do I invite someone?</summary>
+   <p class="a">Open the rider, tap the person icon, and issue a pass. A pass is a code you send to
+   one person or a small group; they enter it in &ldquo;Join / View rider&rdquo; and they are in.
+   You choose whether each pass gives full access or view-only.</p>
+   <p class="a">Issue a separate pass for each person or group. That way you can see who used what,
+   and you can revoke one without affecting anybody else.</p>
+  </details>
+  <details>
+   <summary>Why did my item say &ldquo;Needs approval&rdquo;?</summary>
+   <p class="a">The rider is set so that items suggested by members are approved before they appear
+   on the shared list. Nothing is lost — your suggestion is waiting for someone with full access to
+   accept it. The person who created the rider chooses this setting, and it can be changed.</p>
+  </details>
+  <details>
+   <summary>What can a view-only guest do?</summary>
+   <p class="a">They can see the whole rider, see who is coming, and answer for themselves —
+   including how many people they are bringing. They cannot add, edit or delete items, suggest
+   items, or comment. It is the right level for somebody who needs to know the plan but is not
+   helping build it.</p>
+  </details>
+ </div>
+</section>
+
+<section class="pass s-using">
+ <div class="edge" style="background: var(--c-using)"></div>
+ <div class="pad">
+  <h2>Using a rider</h2>
+  <details>
+   <summary>What does &ldquo;on the list&rdquo; mean?</summary>
+   <p class="a">Each item tracks who is in and who is out. Marking yourself in says &ldquo;count me
+   in for this&rdquo; — useful when an item only applies to some of you. The counts under an item
+   show how many are in and how many are out.</p>
+   <p class="a">Being on the list for an item is separate from whether you are paying for it; that
+   is set in the cost split.</p>
+  </details>
+  <details>
+   <summary>How do I put a private item on the shared list?</summary>
+   <p class="a">On your private list, use &ldquo;Add to shared&rdquo;. The item moves across and
+   everybody on the rider can see it from then on. It moves rather than copies, so it leaves your
+   private list.</p>
+  </details>
+  <details>
+   <summary>Can I assign an item to someone?</summary>
+   <p class="a">Yes. Open the item and set who it is for. They get a notification, and anybody can
+   filter the rider by who an item is assigned to. Assigning is a note about who is handling
+   something; it does not change who is paying for it.</p>
+  </details>
+  <details>
+   <summary>What is a decision, and how do I undo one?</summary>
+   <p class="a">When an item has been discussed and you have settled on an answer, you can lock that
+   answer in as the decision. Press and hold the control rather than tapping it, so it cannot happen
+   by accident. The decision then shows on the item, with who made it and when.</p>
+   <p class="a">Undo is on the same item and puts it back to undecided.</p>
+  </details>
+  <details>
+   <summary>How do comments work?</summary>
+   <p class="a">Every item has its own thread. Comments are visible to everyone on the rider except
+   view-only guests, who cannot post. Mentioning somebody notifies them.</p>
+  </details>
+  <details>
+   <summary>What are the calendar and map views for?</summary>
+   <p class="a">Calendar shows every item that has a date, laid out by day, which is the fastest way
+   to see whether a day is overloaded. Map shows every item that has a location. Items with no date
+   or no location do not appear in those views — they are still on the list.</p>
+  </details>
+ </div>
+</section>
+
+<section class="pass s-notif">
+ <div class="edge" style="background: var(--c-notif)"></div>
+ <div class="pad">
+  <h2>Notifications</h2>
+  <details>
+   <summary>What gets me a notification?</summary>
+   <p class="a">Nine things, all of them somebody else acting on something of yours:</p>
+   <ul class="a">
+    <li>somebody assigns you an item</li>
+    <li>somebody proposes an item on a rider where you review proposals</li>
+    <li>your proposal is approved, or declined</li>
+    <li>somebody puts you in a cost split — the notification carries the amount</li>
+    <li>somebody records a settlement involving you — with the amount and which way it went</li>
+    <li>somebody joins a rider you are on</li>
+    <li>somebody comments on an item you are following</li>
+    <li>somebody mentions you in a comment</li>
+   </ul>
+   <p class="a"><strong>You are never notified about your own actions.</strong> Assigning an item to
+   yourself, approving your own proposal or settling your own share produces nothing, because you
+   were there.</p>
+  </details>
+  <details>
+   <summary>Where do I see them?</summary>
+   <p class="a">The bell, which is on your rider list and on every rider. The number on it is how
+   many you have not read yet.</p>
+   <p class="a"><strong>The bell is for your whole account, not one rider.</strong> It collects everything
+   from every rider you are on, and each line names the rider it came from — so you do not have to
+   go looking through riders to find out what changed.</p>
+   <p class="a">Tapping a line opens the thing it is about. If you are already on that rider, the
+   item opens straight away.</p>
+  </details>
+  <details>
+   <summary>How do I clear them?</summary>
+   <p class="a">One at a time, swipe the line to the left, or use the &times; on it.</p>
+   <p class="a">For all of them at once, the &vellip; button at the top of the list gives you
+   <strong>Mark all read</strong>, which empties the number on the bell but keeps the lines, and
+   <strong>Clear all</strong>, which removes them. Clear all asks you to confirm first.</p>
+   <p class="a">Nothing disappears on its own — a notification stays until you clear it. The list
+   holds your forty most recent.</p>
+  </details>
+  <details>
+   <summary>Somebody says they never got notified</summary>
+   <p class="a">Three things it is usually not, and one it usually is.</p>
+   <p class="a">A view-only guest is not notified about proposals, because they cannot review
+   them. Nobody is notified about their own action. And if they are reading the same rider you are,
+   there is nothing to tell them about.</p>
+   <p class="a">Otherwise: a notification that fails to send <strong>never stops the thing that caused
+   it</strong>. That is deliberate — an item you added is added whether or not anyone could be told. So
+   a missing notification does not mean a missing change; check the rider itself before redoing
+   anything.</p>
+  </details>
+  <details>
+   <summary>Can I get these on my phone when the app is closed?</summary>
+   <p class="a">There is a <strong>Push notifications</strong> switch under Menu &rarr; Profile. It is
+   <strong>per device</strong>: turning it on for your phone does not turn it on for your laptop, and each
+   one has to be switched on where you want the alerts.</p>
+   <p class="a">If you have blocked notifications for RiderMe in your browser, the switch cannot
+   undo that — only you can, in your browser's settings for this site. The screen says so when that
+   is what has happened.</p>
+   <p class="a">Whether an alert reaches a locked phone depends on your phone and your browser, not
+   on RiderMe. The bell inside the app is the reliable record; push is a convenience on top of it.</p>
+  </details>
+ </div>
+</section>
+
+<section class="pass s-offline">
+ <div class="edge" style="background: var(--c-offline)"></div>
+ <div class="pad">
+  <h2>Offline &amp; syncing</h2>
+  <details>
+   <summary>My change says &ldquo;waiting&rdquo; — is it saved?</summary>
+   <p class="a">Yes. RiderMe keeps changes you make with no signal and sends them as soon as you are
+   back online, including if you close the app or your phone shuts it down in between.
+   <strong>&ldquo;Waiting&rdquo; means the app is holding it for you and nothing needs doing.</strong></p>
+   <p class="a">The only message that asks something of you is &ldquo;didn&rsquo;t save&rdquo;, which
+   means the change did not happen and you will need to make it again.</p>
+  </details>
+  <details>
+   <summary>It says &ldquo;showing this rider as it was 4 hours ago&rdquo;</summary>
+   <p class="a">You are offline, and this is the copy saved on your device from the last time the
+   rider loaded. The time is how old that copy is, so you can judge whether to trust it — somebody
+   may have changed something since.</p>
+   <p class="a">You can still add and edit. Those changes wait, and send when you reconnect.</p>
+  </details>
+  <details>
+   <summary>I added something offline and now I can&rsquo;t see it</summary>
+   <p class="a">Two possibilities. If it is on the list with a note that changes are waiting, it is
+   safe and will send.</p>
+   <p class="a">If the rider itself is empty, the copy on your device was never saved — that happens
+   when the rider has not been opened on this device recently — and anything you added has nowhere
+   to appear until you reconnect.</p>
+  </details>
+  <details>
+   <summary>Which riders work offline?</summary>
+   <p class="a">The last five you opened. Open a rider once while you have signal and it stays
+   readable without one. If you are going somewhere without a connection, open the riders you will
+   want before you go.</p>
+  </details>
+ </div>
+</section>
+
+<section class="pass s-costs">
+ <div class="edge" style="background: var(--c-costs)"></div>
+ <div class="pad">
+  <h2>Costs &amp; settling up</h2>
+  <details>
+   <summary>Who is included when a cost is split?</summary>
+   <p class="a">Whoever is selected on that item&rsquo;s split — which you choose per item, and which
+   is not the same as everybody on the rider. Somebody can be on the rider, and on the list for an
+   item, and still not be paying for it.</p>
+  </details>
+  <details>
+   <summary>Someone is bringing people — how does that change the split?</summary>
+   <p class="a">If somebody has said they are bringing others, their share is multiplied by the size
+   of their party. Four people splitting something where one of them brings a guest is five shares,
+   not four, and the person who brought the guest pays two of them.</p>
+  </details>
+  <details>
+   <summary>Why did my share change after someone settled?</summary>
+   <p class="a">A settlement is recorded against the split as it stood at that moment, and it stays
+   at that amount. If the split changes afterwards — somebody joins it, or the total moves —
+   everyone else&rsquo;s share is recalculated, but the settled amount does not move.</p>
+   <p class="a">This is deliberate: a payment somebody has already made should not silently change
+   size.</p>
+  </details>
+  <details>
+   <summary>I paid someone back — how do I record it?</summary>
+   <p class="a">In Settle up, either of you can record it. The person who owes taps &ldquo;I&rsquo;ve
+   paid my share&rdquo;; the person who fronted the money can tap &ldquo;Mark as paid to …&rdquo;
+   against them.</p>
+   <p class="a">It is recorded straight away — <strong>there is no confirmation step</strong> and
+   nothing waits on the other person.</p>
+  </details>
+  <details>
+   <summary>What currency are the totals in?</summary>
+   <p class="a">Each cost is entered in whatever currency it was paid in, and converted into the
+   rider&rsquo;s currency when you enter it. That converted figure is then fixed — if the exchange
+   rate moves later, the number on the item does not.</p>
+  </details>
+ </div>
+</section>
+
+<section class="pass s-access">
+ <div class="edge" style="background: var(--c-access)"></div>
+ <div class="pad">
+  <h2>Access &amp; passes</h2>
+  <details>
+   <summary>Someone says their passcode doesn&rsquo;t work</summary>
+   <p class="a">Usually one of three things. The pass has already been claimed by as many people as
+   it was issued for. The pass was revoked. Or they were removed from the rider, which destroys the
+   pass they joined with.</p>
+   <p class="a">Issue them a new pass. That is the only way to be sure the code being honoured is one
+   you meant to give out.</p>
+  </details>
+  <details>
+   <summary>I removed someone — can they come back?</summary>
+   <p class="a">Not with their old code. Removing somebody destroys the pass they joined with, so it
+   stops working for them and for anybody else you sent it to. If you want them back, issue a new
+   pass.</p>
+  </details>
+  <details>
+   <summary>Why can&rsquo;t I remove someone?</summary>
+   <p class="a">Only the person who created the rider can remove people.</p>
+  </details>
+ </div>
+</section>
+
+<section class="pass s-account">
+ <div class="edge" style="background: var(--c-account)"></div>
+ <div class="pad">
+  <h2>Account, riders &amp; privacy</h2>
+  <details>
+   <summary>What happens to a rider when the trip is over?</summary>
+   <p class="a">Nothing automatic. When you are done with a rider you can archive it, and it moves
+   out of your main list into Archived, further down the same screen. Nothing is deleted and you can
+   open it whenever you like.</p>
+  </details>
+  <details>
+   <summary>Leaving a rider vs removing it from my list vs deleting it</summary>
+   <p class="a">Three different things.</p>
+   <p class="a"><strong>Removing it from your list</strong> takes it off your screen. Everybody
+   else&rsquo;s rider is untouched.</p>
+   <p class="a"><strong>Leaving</strong> takes you off the rider itself — the others see you go. It
+   does not settle anything you owe or are owed, so sort that out first.</p>
+   <p class="a"><strong>Deleting</strong> removes the rider for everyone, permanently. Only the
+   person who created it can.</p>
+  </details>
+  <details>
+   <summary>How do I delete my account?</summary>
+   <p class="a">There are instructions at <a href="/delete-account.html">riderme.app/delete-account</a>,
+   and you can start it from inside the app under Menu &rarr; Security. Deleting your account removes
+   you from every rider you are on and deletes what is stored about you.</p>
+  </details>
+  <details>
+   <summary>What do you store about me?</summary>
+   <p class="a">The privacy policy at <a href="/privacy.html">riderme.app/privacy</a> sets out what
+   is collected, which other services are involved, and what you can ask for.</p>
+  </details>
+ </div>
+</section>
+
+<section class="pass">
+ <div class="edge grad"></div>
+ <div class="pad">
+  <h2>Still stuck?</h2>
+  <p class="lede">Write to <a href="mailto:help@riderme.app">help@riderme.app</a> and tell us what
+  you were doing when it went wrong.</p>
+ </div>
+</section>
+
+<p class="foot"><a href="/privacy.html">Privacy policy</a> &nbsp;·&nbsp; <a href="/delete-account.html">Delete your account</a></p>
+
+</main>
+</body>
+</html>

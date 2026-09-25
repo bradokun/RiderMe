@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RiderMe privacy policy</title>
+<meta name="description" content="What RiderMe collects, who else sees it, and what you can do about it.">
+<!--
+  BUILD 617 — THE PRIVACY POLICY.
+
+  Both stores require a privacy policy URL as a submission field, and Apple expects it reachable
+  from inside the app as well as from the listing. Until this file there was no policy anywhere:
+  `grep -rn "privacy" src/App.jsx index.html` found one code comment about scrubbing auth tokens
+  out of the URL and nothing else.
+
+  A STANDALONE FILE, like delete-account.html and for the same reasons. There is no router and no
+  404.html, so only a real FILE resolves on GitHub Pages; nothing here loads from the bundle, whose
+  filenames are hashed and change every build; and it has to still render years from now, after any
+  rewrite of the app.
+
+  EVERY THIRD PARTY NAMED BELOW COMES FROM THE CSP IN index.html, which is the ENFORCED list of
+  where this app may connect — not from memory, and not from grepping src/. That distinction is not
+  academic: grepping the source missed `nominatim.openstreetmap.org` on the first pass, and the CSP
+  turned up `basemaps.cartocdn.com`, a tile host the app never actually contacts (removed from the
+  CSP in this build rather than disclosed here, because disclosing a third party that is never used
+  is as wrong as omitting one that is).
+
+  tests/check-privacy-page.mjs parses that CSP and fails if any host in it is missing from this
+  page. Add an API call without disclosing it and the sweep goes red.
+
+  DECISIONS BRADLEY MADE, recorded so a later reader knows they were choices:
+    * worldwide including EU and UK, so this is written to the GDPR standard
+    * 13 and over
+    * contact is help@riderme.app, and the responsible party is named as "RiderMe" — DECIDED at
+      624, not still pending. Bradley: keep it as RiderMe. The same answer covers help.html.
+      Revisit only if a company is actually formed, or if a store or a regulator asks for a legal
+      entity by name.
+    * Google Analytics STAYS FOR NOW and is disclosed honestly. **THIS IS AN OPEN ITEM**: with GA
+      in place and EU/UK users in scope, a consent banner shown BEFORE gtag loads is required, and
+      that has not been built. See claude/riderme-state.md.
+
+  NOT LEGAL ADVICE. The factual half — what is collected, where it goes, who else sees it — is
+  measured from the code and is reliable. The legal framing is not something this project can
+  verify, and should be read by somebody qualified before an EU launch.
+-->
+<style>
+ :root {
+  --bg: #0A090F; --surface: #141220; --ink: #F4F2F7; --muted: #A39FA8;
+  --rule: rgba(244,242,247,0.14); --accent: #FF3D6E;
+ }
+ @media (prefers-color-scheme: light) {
+  :root {
+   --bg: #FAF7F2; --surface: #FFFFFF; --ink: #17141F; --muted: #5C5766;
+   --rule: rgba(23,20,31,0.14); --accent: #D61A4C;
+  }
+ }
+ * { box-sizing: border-box; }
+ html, body { margin: 0; padding: 0; background: var(--bg); }
+ body {
+  color: var(--ink);
+  font: 16px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  padding: 32px 16px 64px;
+ }
+ main { max-width: 680px; margin: 0 auto; }
+ h1 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+ h2 { font-size: 1.0625rem; margin: 34px 0 8px; letter-spacing: 0.02em; text-transform: uppercase; }
+ h3 { font-size: 0.9375rem; margin: 18px 0 4px; }
+ .lede { color: var(--muted); margin: 0 0 4px; }
+ .updated { color: var(--muted); font-size: 0.8125rem; margin: 0 0 28px; }
+ .card {
+  background: var(--surface); border: 1.5px solid var(--rule);
+  border-radius: 14px; padding: 18px 18px 8px; margin: 0 0 18px;
+ }
+ ul { padding-left: 22px; margin: 0 0 14px; }
+ li { margin-bottom: 7px; }
+ a { color: var(--accent); }
+ .note { color: var(--muted); font-size: 0.9375rem; }
+ table { width: 100%; border-collapse: collapse; margin: 0 0 14px; font-size: 0.9375rem; }
+ th, td { text-align: left; padding: 9px 10px 9px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+ th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; }
+ td:first-child { white-space: nowrap; padding-right: 18px; font-weight: 600; }
+ footer { margin-top: 42px; padding-top: 18px; border-top: 1.5px solid var(--rule); color: var(--muted); font-size: 0.875rem; }
+ @media (max-width: 460px) {
+  body { padding: 24px 16px 48px; } h1 { font-size: 1.5rem; }
+  table, tbody, tr, td, th { display: block; }
+  th { display: none; }
+  td { border: 0; padding: 2px 0; }
+  td:first-child { padding-top: 12px; border-top: 1px solid var(--rule); }
+ }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Privacy policy</h1>
+<p class="lede">RiderMe helps a group plan a trip together and split what it costs. This page says
+exactly what it holds, who else sees it, and what you can do about it.</p>
+<p class="updated">Last updated 22 September 2026</p>
+
+<h2>Who is responsible</h2>
+<div class="card">
+<p>RiderMe is an independent app, reachable at
+<a href="mailto:help@riderme.app">help@riderme.app</a>. Write to that address about anything on this
+page, including any of the requests below.</p>
+</div>
+
+<h2>What RiderMe holds</h2>
+<div class="card">
+<table>
+<tr><th>What</th><th>Why</th></tr>
+<tr><td>Email address<br>and password</td><td>To sign you in. The password is stored only as a
+ hash by our authentication provider — RiderMe never sees or stores the password itself.</td></tr>
+<tr><td>Display name</td><td>So the other people on a rider know who added, changed or is paying
+ for something.</td></tr>
+<tr><td>Riders you are in</td><td>Your membership, your role, and your access codes.</td></tr>
+<tr><td>What you put on a rider</td><td>Items, dates and times, locations you type, notes, links,
+ comments in discussions, and your votes and “are you coming?” answers.</td></tr>
+<tr><td>Your private list</td><td>Items you keep to yourself within a rider. Nobody else can read
+ these, and no other member of the rider can see them.</td></tr>
+<tr><td>Costs</td><td>Amounts, currencies, who is splitting what, and records of who has paid
+ whom.</td></tr>
+<tr><td>Push registrations</td><td>One record per device you have allowed notifications on, so a
+ notification can reach it.</td></tr>
+<tr><td>Rate-limit records</td><td>Counts of how often you have invited people or tried to join a
+ rider, so the invite and join endpoints cannot be abused.</td></tr>
+</table>
+<p class="note"><strong>RiderMe does not ask for and does not store:</strong> your phone number,
+your address, any payment card or bank details, your contacts, your photos, or your device's
+location. Cost splitting is bookkeeping only — no money moves through RiderMe, so there is nothing
+to take payment details for.</p>
+</div>
+
+<h2>What is kept on your own device</h2>
+<div class="card">
+<p>Some things are stored in your browser rather than on a server, so the app works offline and
+opens quickly:</p>
+<ul>
+ <li>A cached copy of the riders you have open.</li>
+ <li>Changes you make while offline, waiting to be sent when you reconnect.</li>
+ <li>Small markers: which discussions you have read, which reminders you have dismissed, and
+  coordinates already looked up for locations, so the same place is not looked up twice.</li>
+</ul>
+<p class="note">All of it is cleared when you sign out. It never leaves your device except as the
+changes themselves being saved.</p>
+</div>
+
+<h2>Who else sees it</h2>
+<div class="card">
+<p>RiderMe does not sell your data, and does not share it for advertising. These are every outside
+service the app connects to, and exactly what each one receives:</p>
+<table>
+<tr><th>Service</th><th>What it receives</th></tr>
+<tr><td>Supabase</td><td>Hosts the database, the accounts and the sign-in and invitation emails.
+ Everything in the table above is stored there. Supabase acts on our instructions and does not use
+ it for anything of their own.</td></tr>
+<tr><td>Google Analytics</td><td>That a page was opened, with a randomly generated identifier for
+ your browser, plus the general information any web request carries such as your IP address,
+ browser and rough region. It is deliberately told the address of the page WITHOUT any query
+ string, so invite codes and sign-in links are never sent to it.</td></tr>
+<tr><td>OpenStreetMap</td><td>Two things. Map images are fetched from their tile servers, which
+ shows them your IP address and which part of the map you are looking at. And when you type a
+ location into an item, <strong>that text is sent to their search service</strong> to turn it into
+ coordinates.</td></tr>
+<tr><td>frankfurter.dev</td><td>Currency codes only, when a rider uses more than one currency, so
+ an exchange rate can be fetched. No personal information is sent.</td></tr>
+<tr><td>Push services</td><td>If you turn notifications on, your browser registers with its own
+ push service — Google, Apple or Mozilla, depending on your device — and notifications reach you
+ through it.</td></tr>
+</table>
+<p class="note">RiderMe may also disclose information if the law requires it.</p>
+</div>
+
+<h2>Other people on your riders</h2>
+<div class="card">
+<p>A rider is shared, so the people in it can see your display name, what you add and change, your
+comments, your votes and your share of any cost. That is the point of the app rather than a side
+effect, and it is worth being clear about: <strong>anything you put on a shared rider is visible to
+everyone else on it.</strong> Your private list is the exception and is visible to nobody.</p>
+</div>
+
+<h2>How long it is kept</h2>
+<div class="card">
+<ul>
+ <li>Your account and its data are kept while the account exists.</li>
+ <li>You can delete your account at any time, from inside the app or by asking us —
+  <a href="https://www.riderme.app/delete-account.html">how to delete your account</a> sets out
+  exactly what is removed and the little that is kept.</li>
+ <li>Deleted data can remain in encrypted backups for up to 30 days, after which it is gone.</li>
+ <li>Rate-limit records are short-lived and are removed with your account.</li>
+</ul>
+</div>
+
+<h2>Your rights</h2>
+<div class="card">
+<p>Wherever you live, you can ask us to give you a copy of your data, correct it, delete it, or
+stop using it in a particular way. Email
+<a href="mailto:help@riderme.app?subject=Privacy%20request">help@riderme.app</a> and we will reply
+within 30 days.</p>
+<h3>If you are in the UK or the EU</h3>
+<p>We rely on these lawful bases: <strong>performing our agreement with you</strong>, for running
+your account and your riders; <strong>legitimate interests</strong>, for keeping the service secure
+and working, including the rate limits; and <strong>consent</strong>, for push notifications and
+for analytics, which you can withdraw at any time. You also have the right to object, the right to
+data portability, and the right to complain to your data protection authority.</p>
+<h3>If you are in California</h3>
+<p>We do not sell or share personal information as those terms are defined by the CCPA, and we do
+not discriminate against anyone who exercises their rights.</p>
+</div>
+
+<h2>Where your data is held</h2>
+<div class="card">
+<p>RiderMe's database and accounts are hosted by Supabase, and the services listed above operate
+internationally, so your information may be processed outside your own country — including in the
+United States. Where that involves a transfer out of the UK or the EEA, it is made under the
+safeguards those providers have in place, such as the standard contractual clauses.</p>
+</div>
+
+<h2>Children</h2>
+<div class="card">
+<p>RiderMe is not intended for anyone under 13, and we do not knowingly collect information from
+children under 13. If you believe a child has given us information, email
+<a href="mailto:help@riderme.app">help@riderme.app</a> and we will remove it.</p>
+</div>
+
+<h2>Security</h2>
+<div class="card">
+<p>Traffic is encrypted in transit. Access to a rider is enforced by the database itself rather
+than only by the app, so a rider you are not a member of cannot be read even by a request made
+outside the app. Passwords are stored as hashes, never in a readable form. No system is perfect,
+and we do not claim otherwise.</p>
+</div>
+
+<h2>Changes to this policy</h2>
+<div class="card">
+<p>If this policy changes, the date at the top changes with it. If a change is significant we will
+say so in the app rather than relying on you to re-read this page.</p>
+</div>
+
+<footer>
+RiderMe · <a href="https://www.riderme.app/">riderme.app</a> ·
+<a href="https://www.riderme.app/delete-account.html">Delete your account</a> ·
+<a href="mailto:help@riderme.app">help@riderme.app</a>
+</footer>
+
+</main>
+</body>
+</html>
