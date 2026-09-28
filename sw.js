@@ -15,7 +15,7 @@
 // new files, and activate clears the previous deploy's. Before this the file never changed, so the
 // precache ran once per device, ever, and old deploys' files piled up forever. In development the
 // placeholder stays as it is, which is harmless.
-const SHELL = 'riderme-shell-mukm32fc';
+const SHELL = 'riderme-shell-mulfkxrg';
 
 /* PRECACHE ON INSTALL — build 610.
  *
