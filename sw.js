@@ -10,7 +10,12 @@
  * Cross-origin requests (Supabase, analytics, fonts, map tiles) are never
  * touched — the app must always hit the network for those.
  */
-const SHELL = 'riderme-shell-v2';
+// BUILD 640 — ONE CACHE PER DEPLOY. The build writes the deploy id over the placeholder below
+// (vite.config.js, stampServiceWorker), so every deploy is a new worker: install re-precaches the
+// new files, and activate clears the previous deploy's. Before this the file never changed, so the
+// precache ran once per device, ever, and old deploys' files piled up forever. In development the
+// placeholder stays as it is, which is harmless.
+const SHELL = 'riderme-shell-mukivkvt';
 
 /* PRECACHE ON INSTALL — build 610.
  *
@@ -73,8 +78,21 @@ self.addEventListener('install', (e) => {
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
+    // 640 — clear older deploys only once THIS deploy's shell is really cached. Install is allowed
+    // to finish with a partial precache (a dropped connection mid-install), and deleting the old
+    // cache then would leave somebody who goes offline with no app at all. Until the new shell
+    // is in, the old one stays; the fetch handler reads across every cache (caches.match).
+    // And ONE previous deploy is always kept: a tab still running it may yet open the map or a QR
+    // code, whose files belong to that deploy and are gone from the server (second review).
+    // Deploy ids are base-36 timestamps of equal length, so they sort in deploy order.
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k !== SHELL).map((k) => caches.delete(k)));
+    const mine = await caches.open(SHELL);
+    const ready = !!(await mine.match('/'));
+    if (ready) {
+      const older = keys.filter((k) => k !== SHELL && k.startsWith('riderme-shell-')).sort();
+      const keep = new Set([SHELL, older[older.length - 1]]);
+      await Promise.all(keys.filter((k) => !keep.has(k)).map((k) => caches.delete(k)));
+    }
     await self.clients.claim();
   })());
 });
@@ -95,7 +113,8 @@ self.addEventListener('fetch', (e) => {
         cache.put('/', fresh.clone());
         return fresh;
       } catch {
-        return (await caches.match('/')) || Response.error();
+        // 640 — this deploy's shell first; an older deploy's only if this one has none yet.
+        return (await (await caches.open(SHELL)).match('/')) || (await caches.match('/')) || Response.error();
       }
     })());
     return;
